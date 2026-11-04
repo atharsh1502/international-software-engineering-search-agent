@@ -39,10 +39,6 @@ You need `app_id` and `app_key`. API coverage and results vary by country; verif
    - `JOOBLE_API_KEY` = your Jooble API key (optional)
    - `ATS_COMPANIES_JSON` = JSON array of configured Greenhouse, Lever, Ashby, or SmartRecruiters boards (optional)
    - `MAX_ADZUNA_SEARCHES` = maximum Adzuna searches per refresh (default `8`, valid range `1`–`12`)
-   ADZUNA_APP_ID=
-# 20b1d631
-# 52b8d4c7838e97c90a71be94a25d304b
-# 43ff77f7488248d6a171f4245b2a804c
 6. Ensure the variables are available to Functions. Trigger a new deploy after adding them.
 7. Deploy:
    ```bash
