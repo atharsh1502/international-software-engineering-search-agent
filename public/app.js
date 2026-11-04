@@ -70,7 +70,19 @@ async function loadJobs() {
     $("setupNotice").textContent="API endpoint is not reachable yet. Deploy the project to Netlify, then configure the API keys.";
   }
 }
-$("refreshBtn").addEventListener("click",loadJobs);
+$("refreshBtn").addEventListener("click", async () => {
+  const button = $("refreshBtn");
+
+  button.disabled = true;
+  button.textContent = "Loading jobs...";
+
+  try {
+    await loadJobs();
+  } finally {
+    button.disabled = false;
+    button.textContent = "↻ Reload saved jobs";
+  }
+});
 ["searchInput","regionFilter","categoryFilter","sortFilter"].forEach(id=>$(id).addEventListener(id==="searchInput"?"input":"change",renderJobs));
 $("clearFilters").addEventListener("click",()=>{$("searchInput").value="";$("regionFilter").value="all";$("categoryFilter").value="all";renderJobs();});
 document.querySelectorAll("[data-view]").forEach(el=>el.addEventListener("click",()=>showView(el.dataset.view)));
