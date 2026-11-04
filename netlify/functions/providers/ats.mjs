@@ -1,5 +1,12 @@
-const timeout = 12000;
+import {
+  classifySponsorship,
+  isSecureApplyUrl,
+  normalizeRegion
+} from "./job-utils.mjs";
+
+const timeout = 8000;
 const concurrency = 4;
+const maxCompanies = 8;
 
 function clean(value = "") {
   return String(value)
@@ -26,38 +33,6 @@ function smartRecruitersLocation(location = {}) {
   return [city, country].filter(Boolean).join(", ") || (location.remote ? "Remote" : "");
 }
 
-function normalizeRegion(location) {
-  const value = clean(location || "");
-  const normalized = value.toLowerCase();
-  const regions = [
-    ["Singapore", /\bsingapore\b|\bsg\b/],
-    ["Malaysia", /\bmalaysia\b|\bmy\b/],
-    ["United Arab Emirates", /\bunited arab emirates\b|\bu\.?a\.?e\.?\b|\buae\b|\bdubai\b|\babu dhabi\b|\bsharjah\b/],
-    ["Saudi Arabia", /\bsaudi arabia\b|\bksa\b|\briyadh\b|\bjeddah\b/],
-    ["Qatar", /\bqatar\b|\bdoha\b/],
-    ["Oman", /\boman\b|\bmuscat\b/],
-    ["Kuwait", /\bkuwait\b/],
-    ["Bahrain", /\bbahrain\b|\bmanama\b/]
-  ];
-
-  for (const [region, pattern] of regions) {
-    if (pattern.test(normalized)) return region;
-  }
-  if (!value || /remote|worldwide|anywhere|work from anywhere/i.test(value)) {
-    return "Remote";
-  }
-  return value;
-}
-
-function isSecureApplyUrl(value) {
-  if (typeof value !== "string") return false;
-  try {
-    return new URL(value).protocol === "https:";
-  } catch {
-    return false;
-  }
-}
-
 function normalizeJob({
   source,
   id,
@@ -80,9 +55,7 @@ function normalizeJob({
     applyUrl: isSecureApplyUrl(url) ? new URL(url).href : "",
     postedAt: postedAt || null,
     salary: "Not disclosed",
-    visa: /visa sponsorship|work permit|relocation support|sponsor.*visa/i.test(text)
-      ? "Mentioned - verify with employer"
-      : "Not stated - ask recruiter",
+    visa: classifySponsorship(text),
     experience: "Check job description",
     fitScore: 0,
     status: "Found via company career API; verify application status",
@@ -237,6 +210,12 @@ export async function fetchATSJobs(scoreJob) {
     return {
       jobs: [],
       errors: ["ATS_COMPANIES_JSON must be an array"]
+    };
+  }
+  if (companies.length > maxCompanies) {
+    return {
+      jobs: [],
+      errors: [`ATS_COMPANIES_JSON supports at most ${maxCompanies} company boards per refresh`]
     };
   }
 

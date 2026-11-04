@@ -1,4 +1,4 @@
-import { store, JOBS_KEY, META_KEY, PROFILE } from "./_shared.mjs";
+import { store, JOBS_KEY, META_KEY } from "./_shared.mjs";
 
 export default async (request) => {
   try {
@@ -27,10 +27,9 @@ export default async (request) => {
     });
 
     return new Response(JSON.stringify({
-      profile: PROFILE,
       jobs: filtered,
       metadata: { ...metadata, total: jobs.length, filtered: filtered.length },
-      setup: jobs.length ? null : "No job data yet. Add Adzuna API credentials in Netlify and run the refresh function."
+      setup: jobs.length ? null : "No job data yet. Configure your job providers in Netlify and run the refresh function."
     }), { headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
   } catch (error) {
     return new Response(JSON.stringify({ error: "Unable to load jobs", detail: String(error.message || error) }), {

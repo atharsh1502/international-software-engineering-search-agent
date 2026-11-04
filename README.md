@@ -38,6 +38,7 @@ You need `app_id` and `app_key`. API coverage and results vary by country; verif
    - `JOB_REFRESH_SECRET` = a long random secret generated for this deployment
    - `JOOBLE_API_KEY` = your Jooble API key (optional)
    - `ATS_COMPANIES_JSON` = JSON array of configured Greenhouse, Lever, Ashby, or SmartRecruiters boards (optional)
+   - `MAX_ADZUNA_SEARCHES` = maximum Adzuna searches per refresh (default `8`, valid range `1`–`12`)
 6. Ensure the variables are available to Functions. Trigger a new deploy after adding them.
 7. Deploy:
    ```bash
@@ -114,6 +115,9 @@ Singapore, Malaysia, UAE, Saudi Arabia, Qatar, Oman, Kuwait and Bahrain.
 - Check environment variable scope and redeploy after changing variables.
 - Adzuna may not return vacancies for every region or query. Empty responses preserve the last successful snapshot.
 - Netlify Scheduled Functions have a 30-second execution limit; the code runs API queries concurrently.
+- Adzuna runs at most eight searches by default, prioritizing one search per target region. `MAX_ADZUNA_SEARCHES` is capped at twelve to leave time for other providers within Netlify's function limit.
+- Refresh metadata records the total duration and each provider's duration; provider requests have timeouts and bounded concurrency.
+- If API credentials have been committed to a public repository, rotate them in the provider/Netlify dashboards. Clearing the template does not invalidate previously exposed credentials.
 
 ## 8. Security notes
 - Never put Adzuna keys or refresh secret in frontend JavaScript.

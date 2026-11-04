@@ -1,3 +1,5 @@
+import { classifySponsorship, isSecureApplyUrl } from "./job-utils.mjs";
+
 const SEARCHES = [
   { keyword: "Java Spring Boot Developer", location: "United Arab Emirates" },
   { keyword: "Java Backend Engineer", location: "Saudi Arabia" },
@@ -9,7 +11,7 @@ const SEARCHES = [
   { keyword: "Java Full Stack Developer", location: "Malaysia" }
 ];
 
-const timeout = 9000;
+const timeout = 8000;
 const concurrency = 4;
 
 function clean(value = "") {
@@ -18,15 +20,6 @@ function clean(value = "") {
     .replace(/&nbsp;/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-function isSecureUrl(value) {
-  if (typeof value !== "string") return false;
-  try {
-    return new URL(value).protocol === "https:";
-  } catch {
-    return false;
-  }
 }
 
 function normalizeDate(value) {
@@ -78,7 +71,7 @@ async function fetchSearch(apiKey, search) {
   const data = await response.json();
   const listings = Array.isArray(data?.jobs) ? data.jobs : [];
   const jobs = listings
-    .filter((job) => job && typeof job === "object" && isSecureUrl(job.link))
+    .filter((job) => job && typeof job === "object" && isSecureApplyUrl(job.link))
     .map((job) => {
       const description = clean(job.snippet || "");
       return {
@@ -92,9 +85,7 @@ async function fetchSearch(apiKey, search) {
         applyUrl: new URL(job.link).href,
         postedAt: normalizeDate(job.updated),
         salary: clean(job.salary || "Not disclosed"),
-        visa: /visa sponsorship|work permit|relocation support/i.test(description)
-          ? "Mentioned - verify with employer"
-          : "Not stated - ask recruiter",
+        visa: classifySponsorship(description),
         experience: "Check job description",
         fitScore: 0,
         status: "Found via API; verify application status",

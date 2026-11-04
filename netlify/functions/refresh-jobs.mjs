@@ -23,7 +23,8 @@ export default async (request) => {
     jobs: incoming,
     errors = [],
     skipped = [],
-    durationMs
+    durationMs,
+    providerTimings = {}
   } = await fetchAllJobSources();
   if (!incoming.length) {
     const currentStore = store();
@@ -39,10 +40,11 @@ export default async (request) => {
       newlyFetched: 0,
       errors: errors.slice(0, 20),
       skipped,
-      refreshDurationMs: durationMs
+      refreshDurationMs: durationMs,
+      providerTimings
     };
     await currentStore.setJSON(META_KEY, metadata);
-    return new Response(JSON.stringify({ ok: false, imported: 0, skipped, errors, durationMs, note: "No API results returned; existing stored jobs were preserved." }), {
+    return new Response(JSON.stringify({ ok: false, imported: 0, skipped, errors, durationMs, providerTimings, note: "No API results returned; existing stored jobs were preserved." }), {
       status: 502, headers: { "content-type": "application/json" }
     });
   }
@@ -67,7 +69,8 @@ export default async (request) => {
     newlyFetched: incoming.length,
     errors: errors.slice(0, 20),
     skipped,
-    refreshDurationMs: durationMs
+    refreshDurationMs: durationMs,
+    providerTimings
   };
   await currentStore.setJSON(JOBS_KEY, merged);
   await currentStore.setJSON(META_KEY, metadata);

@@ -1,6 +1,7 @@
 import { getStore } from "@netlify/blobs";
 import { fetchATSJobs } from "./providers/ats.mjs";
 import { fetchJoobleJobs } from "./providers/jooble.mjs";
+import { classifySponsorship } from "./providers/job-utils.mjs";
 
 export const STORE_NAME = "atharsh-job-search";
 export const JOBS_KEY = "jobs-v1";
@@ -45,6 +46,27 @@ function normalizeText(value = "") {
   return String(value).replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
 }
 
+async function mapWithConcurrency(items, limit, mapper) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < items.length) {
+      const index = nextIndex++;
+      try {
+        results[index] = { status: "fulfilled", value: await mapper(items[index]) };
+      } catch (reason) {
+        results[index] = { status: "rejected", reason };
+      }
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, () => worker())
+  );
+  return results;
+}
+
 export function scoreJob(job) {
   const text = `${job.title || ""} ${job.description || ""} ${job.company || ""}`.toLowerCase();
   const strongSkills = [
@@ -77,7 +99,9 @@ export function scoreJob(job) {
   for (const skill of strongSkills) if (text.includes(skill)) score += 5;
   for (const skill of relevantSkills) if (text.includes(skill)) score += 3;
   if (/java/.test(text) && /spring boot/.test(text)) score += 12;
-  if (/visa sponsorship|work visa sponsorship|employer sponsored visa/i.test(text)) score += 10;
+  if (["Sponsorship mentioned - verify", "Confirmed by recruiter"].includes(classifySponsorship(text))) {
+    score += 10;
+  }
   if (/senior|staff|principal|architect|10\+ years/.test(text)) score -= 20;
   if (/intern|internship|unpaid/.test(text)) score -= 40;
   return Math.max(0, Math.min(100, score));
@@ -98,7 +122,7 @@ export function normalizeAdzuna(ad, region) {
     applyUrl: url,
     postedAt: ad.created || null,
     salary: ad.salary_min && ad.salary_max ? `${ad.salary_min}–${ad.salary_max} ${ad.salary_currency || ""}`.trim() : "Not disclosed",
-    visa: /visa sponsorship|work permit|relocation support|sponsor.*visa/i.test(description) ? "Mentioned — verify with employer" : "Not stated — ask recruiter",
+    visa: classifySponsorship(description),
     experience: "Check job description",
     fitScore: 0,
     status: "Found via API; verify application status",
@@ -115,30 +139,55 @@ export async function fetchAdzunaJobs() {
     return { jobs: [], skipped: "Adzuna credentials not configured" };
   }
 
-  const all = [];
-  const errors = [];
-  const tasks = LOCATION_QUERIES.flatMap((location) =>
-    location.terms.map(async (term) => {
-      const url = new URL(`https://api.adzuna.com/v1/api/jobs/${location.country}/search/1`);
-      url.searchParams.set("app_id", appId);
-      url.searchParams.set("app_key", appKey);
-      url.searchParams.set("what", term);
-      url.searchParams.set("results_per_page", "20");
-      url.searchParams.set("content-type", "application/json");
-      url.searchParams.set("sort_by", "date");
-      try {
-        const response = await fetch(url, { signal: AbortSignal.timeout(12000) });
-        if (!response.ok) throw new Error(`Adzuna ${location.country}/${term}: HTTP ${response.status}`);
-        const data = await response.json();
-        for (const item of data.results || []) all.push(normalizeAdzuna(item, location.region));
-      } catch (error) {
-        errors.push(String(error.message || error));
-      }
-    })
-  );
+  const maxSearchesValue = process.env.MAX_ADZUNA_SEARCHES || "8";
+  const maxSearches = Number(maxSearchesValue);
+  const maxSafeSearches = 12;
+  if (!Number.isInteger(maxSearches) || maxSearches < 1 || maxSearches > maxSafeSearches) {
+    return {
+      jobs: [],
+      errors: [`MAX_ADZUNA_SEARCHES must be an integer from 1 to ${maxSafeSearches}`]
+    };
+  }
 
-  await Promise.allSettled(tasks);
-  return { jobs: all, errors };
+  const regionFirstSearches = LOCATION_QUERIES.map((location) => ({
+    location,
+    term: location.terms[0]
+  }));
+  const remainingSearches = LOCATION_QUERIES.flatMap((location) =>
+    location.terms.slice(1).map((term) => ({ location, term }))
+  );
+  const searches = [...regionFirstSearches, ...remainingSearches].slice(0, maxSearches);
+  const jobs = [];
+  const errors = [];
+  const results = await mapWithConcurrency(searches, 4, async ({ location, term }) => {
+    const url = new URL(`https://api.adzuna.com/v1/api/jobs/${location.country}/search/1`);
+    url.searchParams.set("app_id", appId);
+    url.searchParams.set("app_key", appKey);
+    url.searchParams.set("what", term);
+    url.searchParams.set("results_per_page", "20");
+    url.searchParams.set("content-type", "application/json");
+    url.searchParams.set("sort_by", "date");
+
+    const response = await fetch(url, { signal: AbortSignal.timeout(7000) });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    return (data.results || []).map((item) => normalizeAdzuna(item, location.region));
+  });
+
+  for (let i = 0; i < results.length; i++) {
+    const result = results[i];
+    if (result.status === "fulfilled") {
+      jobs.push(...result.value);
+    } else {
+      errors.push(
+        `Adzuna ${searches[i].location.country}/${searches[i].term}: ${
+          result.reason?.message || result.reason
+        }`
+      );
+    }
+  }
+
+  return { jobs, errors };
 }
 
 function normalizeJobicy(job) {
@@ -157,9 +206,7 @@ function normalizeJobicy(job) {
     salary: job.salaryMin && job.salaryMax
       ? `${job.salaryMin}–${job.salaryMax}${job.salaryCurrency ? ` ${job.salaryCurrency}` : ""} (${job.salaryPeriod || "period not specified"})`
       : "Not disclosed",
-    visa: /visa sponsorship|work permit|relocation support|sponsor.*visa/i.test(description)
-      ? "Mentioned — verify with employer"
-      : "Not stated — ask recruiter",
+    visa: classifySponsorship(description),
     experience: "Check job description",
     fitScore: 0,
     status: "Found via API; verify application status",
@@ -172,7 +219,7 @@ function normalizeJobicy(job) {
 async function fetchJobicyJobs() {
   try {
     const response = await fetch("https://jobicy.com/api/jobs?count=100", {
-      signal: AbortSignal.timeout(15000)
+      signal: AbortSignal.timeout(10000)
     });
     if (!response.ok) throw new Error(`Jobicy HTTP ${response.status}`);
 
@@ -223,9 +270,7 @@ function normalizeRemoteOK(job) {
     applyUrl: job.apply_url || url,
     postedAt: job.date || null,
     salary: job.salary || "Not disclosed",
-    visa: /visa sponsorship|work permit|relocation support|sponsor.*visa/i.test(description)
-      ? "Mentioned — verify with employer"
-      : "Not stated — ask recruiter",
+    visa: classifySponsorship(description),
     experience: "Check job description",
     fitScore: 0,
     status: "Found via API; verify application status",
@@ -239,7 +284,7 @@ async function fetchRemoteOKJobs() {
   try {
     const response = await fetch("https://remoteok.com/api", {
       headers: { "User-Agent": "AtharshJobSearchDashboard/1.0" },
-      signal: AbortSignal.timeout(15000)
+      signal: AbortSignal.timeout(10000)
     });
     if (!response.ok) throw new Error(`Remote OK HTTP ${response.status}`);
 
@@ -256,24 +301,54 @@ async function fetchRemoteOKJobs() {
 
 export async function fetchAllJobSources() {
   const startedAt = Date.now();
-  const results = await Promise.allSettled([
-    fetchAdzunaJobs(),
-    fetchJobicyJobs(),
-    fetchRemoteOKJobs(),
-    fetchATSJobs(scoreJob),
-    fetchJoobleJobs(scoreJob)
-  ]);
+  const providers = [
+    ["Adzuna", fetchAdzunaJobs],
+    ["Jobicy", fetchJobicyJobs],
+    ["Remote OK", fetchRemoteOKJobs],
+    ["ATS", () => fetchATSJobs(scoreJob)],
+    ["Jooble", () => fetchJoobleJobs(scoreJob)]
+  ];
+  const results = await Promise.all(
+    providers.map(async ([name, fetchJobs]) => {
+      const providerStartedAt = Date.now();
+      try {
+        return {
+          name,
+          result: await fetchJobs(),
+          durationMs: Date.now() - providerStartedAt
+        };
+      } catch (error) {
+        return {
+          name,
+          error,
+          durationMs: Date.now() - providerStartedAt
+        };
+      }
+    })
+  );
   const jobs = [];
   const errors = [];
   const skipped = [];
+  const providerTimings = {};
 
-  for (const result of results) {
-    if (result.status === "fulfilled") {
-      jobs.push(...(result.value.jobs || []));
-      errors.push(...(result.value.errors || []));
-      if (result.value.skipped) skipped.push(result.value.skipped);
-    } else {
-      errors.push(String(result.reason?.message || result.reason));
+  for (const provider of results) {
+    providerTimings[provider.name] = provider.durationMs;
+    if (provider.error) {
+      errors.push(`${provider.name}: ${provider.error.message || provider.error}`);
+      continue;
+    }
+
+    const result = provider.result;
+    jobs.push(...(result.jobs || []));
+    errors.push(...(result.errors || []).map((error) =>
+      error.startsWith(`${provider.name}:`) ? error : `${provider.name}: ${error}`
+    ));
+    if (result.skipped) skipped.push(`${provider.name}: ${result.skipped}`);
+    if ((result.errors || []).length) {
+      console.warn(`${provider.name} provider reported errors`, {
+        durationMs: provider.durationMs,
+        errors: result.errors
+      });
     }
   }
 
@@ -281,7 +356,8 @@ export async function fetchAllJobSources() {
     jobs: dedupeJobs(jobs),
     errors,
     skipped,
-    durationMs: Date.now() - startedAt
+    durationMs: Date.now() - startedAt,
+    providerTimings
   };
 }
 

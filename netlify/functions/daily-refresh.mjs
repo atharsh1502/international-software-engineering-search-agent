@@ -13,7 +13,8 @@ export default async () => {
     jobs: incoming,
     errors = [],
     skipped = [],
-    durationMs
+    durationMs,
+    providerTimings = {}
   } = await fetchAllJobSources();
   if (!incoming.length) {
     const blobStore = store();
@@ -29,10 +30,11 @@ export default async () => {
       newlyFetched: 0,
       errors: errors.slice(0, 20),
       skipped,
-      refreshDurationMs: durationMs
+      refreshDurationMs: durationMs,
+      providerTimings
     };
     await blobStore.setJSON(META_KEY, metadata);
-    console.warn("Daily refresh returned no jobs", { skipped, errors, durationMs });
+    console.warn("Daily refresh returned no jobs", { skipped, errors, durationMs, providerTimings });
     return;
   }
 
@@ -57,9 +59,13 @@ export default async () => {
     newlyFetched: incoming.length,
     errors: errors.slice(0, 20),
     skipped,
-    refreshDurationMs: durationMs
+    refreshDurationMs: durationMs,
+    providerTimings
   });
-  console.log(`Daily job refresh complete: ${incoming.length} fetched; ${jobs.length} stored`, { durationMs });
+  console.log(`Daily job refresh complete: ${incoming.length} fetched; ${jobs.length} stored`, {
+    durationMs,
+    providerTimings
+  });
 };
 
 export const config = { schedule: "30 23 * * *" }; // 05:00 India time (UTC+5:30)
