@@ -19,7 +19,7 @@ export default async () => {
   await blobStore.setJSON(JOBS_KEY, jobs);
   await blobStore.setJSON(META_KEY, {
     lastUpdated: new Date().toISOString(),
-    sources: ["Adzuna", "Jobicy", "Remote OK"],
+    sources: [...new Set(incoming.map((job) => job.source))],
     count: jobs.length,
     newlyFetched: incoming.length,
     errors: errors.slice(0, 20)

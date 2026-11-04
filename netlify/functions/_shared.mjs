@@ -127,7 +127,9 @@ function normalizeJobicy(job) {
     description,
     applyUrl: url,
     postedAt: job.pubDate || job.datePosted || null,
-    salary: job.annualSalary || job.salary || "Not disclosed",
+    salary: job.salaryMin && job.salaryMax
+      ? `${job.salaryMin}–${job.salaryMax}${job.salaryCurrency ? ` ${job.salaryCurrency}` : ""} (${job.salaryPeriod || "period not specified"})`
+      : "Not disclosed",
     visa: /visa sponsorship|work permit|relocation support|sponsor.*visa/i.test(description)
       ? "Mentioned — verify with employer"
       : "Not stated — ask recruiter",
@@ -142,7 +144,7 @@ function normalizeJobicy(job) {
 
 async function fetchJobicyJobs() {
   try {
-    const response = await fetch("https://jobicy.com/api/v2/remote-jobs?count=50", {
+    const response = await fetch("https://jobicy.com/api/jobs?count=100", {
       signal: AbortSignal.timeout(15000)
     });
     if (!response.ok) throw new Error(`Jobicy HTTP ${response.status}`);

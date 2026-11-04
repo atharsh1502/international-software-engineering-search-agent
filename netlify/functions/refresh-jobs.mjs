@@ -29,7 +29,7 @@ export default async (request) => {
   const merged = dedupeJobs([...byKey.values()]);
   const metadata = {
     lastUpdated: new Date().toISOString(),
-    sources: ["Adzuna", "Jobicy", "Remote OK"],
+    sources: [...new Set(incoming.map((job) => job.source))],
     count: merged.length,
     newlyFetched: incoming.length,
     errors: errors.slice(0, 20)
