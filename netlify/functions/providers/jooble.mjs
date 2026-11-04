@@ -15,7 +15,7 @@ const SEARCHES = [
   { keyword: "Java Full Stack Developer", location: "Malaysia" }
 ];
 
-const timeout = 8000;
+const timeout = 7000;
 const concurrency = 4;
 
 function clean(value = "") {
@@ -137,5 +137,9 @@ export async function fetchJoobleJobs(scoreJob) {
     }
   }
 
-  return { jobs, errors };
+  return {
+    jobs,
+    errors,
+    refreshedSources: errors.length ? [] : ["Jooble"]
+  };
 }

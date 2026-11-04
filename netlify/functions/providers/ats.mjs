@@ -4,7 +4,7 @@ import {
   normalizeRegion
 } from "./job-utils.mjs";
 
-const timeout = 8000;
+const timeout = 7000;
 const concurrency = 4;
 const maxCompanies = 8;
 
@@ -185,6 +185,12 @@ const providers = {
   ashby: fetchAshby,
   smartrecruiters: fetchSmartRecruiters
 };
+const sourceNames = {
+  greenhouse: "Greenhouse",
+  lever: "Lever",
+  ashby: "Ashby",
+  smartrecruiters: "SmartRecruiters"
+};
 
 export async function fetchATSJobs(scoreJob) {
   const raw = process.env.ATS_COMPANIES_JSON;
@@ -219,8 +225,25 @@ export async function fetchATSJobs(scoreJob) {
     };
   }
 
+  const invalidCompanyIndices = companies.flatMap((company, index) =>
+    !company || typeof company !== "object" || Array.isArray(company) ||
+      typeof company.name !== "string" || !company.name.trim()
+      ? [index + 1]
+      : []
+  );
+  if (invalidCompanyIndices.length) {
+    return {
+      jobs: [],
+      errors: invalidCompanyIndices.map((index) =>
+        `ATS_COMPANIES_JSON entry ${index}: company name is required`
+      )
+    };
+  }
+
   const jobs = [];
   const errors = [];
+  const successfulSources = new Set();
+  const failedSources = new Set();
   const results = await mapWithConcurrency(companies, concurrency, async (company) => {
     if (!company || typeof company !== "object" || Array.isArray(company)) {
       throw new Error("Company entry must be an object");
@@ -230,25 +253,37 @@ export async function fetchATSJobs(scoreJob) {
     if (!Object.hasOwn(providers, providerName)) {
       throw new Error(`Unsupported ATS: ${company.ats || "unspecified"}`);
     }
+    if (typeof company.name !== "string" || !company.name.trim()) {
+      throw new Error("Company name is required");
+    }
     if (typeof company.board !== "string" || !company.board.trim()) {
       throw new Error("Company board identifier is required");
     }
-    return providers[providerName](company, scoreJob);
+    return {
+      source: sourceNames[providerName],
+      jobs: await providers[providerName](company, scoreJob)
+    };
   });
 
   for (let i = 0; i < results.length; i++) {
     const result = results[i];
     if (result.status === "fulfilled") {
-      const secureJobs = result.value.filter((job) => isSecureApplyUrl(job.applyUrl));
+      const { source, jobs: providerJobs } = result.value;
+      const secureJobs = providerJobs.filter((job) => isSecureApplyUrl(job.applyUrl));
       jobs.push(...secureJobs);
-      if (secureJobs.length !== result.value.length) {
+      if (secureJobs.length !== providerJobs.length) {
+        failedSources.add(source);
         errors.push(
           `${companies[i]?.name || "Unknown company"}: skipped ${
-            result.value.length - secureJobs.length
+            providerJobs.length - secureJobs.length
           } listing(s) without a valid HTTPS application URL`
         );
+      } else {
+        successfulSources.add(source);
       }
     } else {
+      const providerName = String(companies[i]?.ats || "").toLowerCase();
+      if (sourceNames[providerName]) failedSources.add(sourceNames[providerName]);
       errors.push(
         `${companies[i]?.name || "Unknown company"}: ${
           result.reason?.message || result.reason
@@ -257,5 +292,9 @@ export async function fetchATSJobs(scoreJob) {
     }
   }
 
-  return { jobs, errors };
+  return {
+    jobs,
+    errors,
+    refreshedSources: [...successfulSources].filter((source) => !failedSources.has(source))
+  };
 }

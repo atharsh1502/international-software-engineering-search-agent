@@ -1,7 +1,21 @@
 import { getStore } from "@netlify/blobs";
 import { fetchATSJobs } from "./providers/ats.mjs";
 import { fetchJoobleJobs } from "./providers/jooble.mjs";
-import { classifySponsorship, normalizeRegion } from "./providers/job-utils.mjs";
+import {
+  classifySponsorship,
+  dedupeJobs,
+  normalizeRegion,
+  selectRotatedSearches,
+  scoreJob
+} from "./providers/job-utils.mjs";
+export {
+  countJobsBySource,
+  dedupeJobs,
+  filterJobs,
+  getJobDedupeKey,
+  mergeJobs,
+  scoreJob
+} from "./providers/job-utils.mjs";
 
 export const STORE_NAME = "atharsh-job-search";
 export const JOBS_KEY = "jobs-v1";
@@ -67,46 +81,6 @@ async function mapWithConcurrency(items, limit, mapper) {
   return results;
 }
 
-export function scoreJob(job) {
-  const text = `${job.title || ""} ${job.description || ""} ${job.company || ""}`.toLowerCase();
-  const strongSkills = [
-    "java",
-    "spring boot",
-    "microservices",
-    "rest api",
-    "backend",
-    "react",
-    "angular",
-    "oauth",
-    "oidc",
-    "jwt",
-    "kafka",
-    "docker",
-    "kubernetes"
-  ];
-  const relevantSkills = [
-    "postgresql",
-    "typescript",
-    "jenkins",
-    "tekton",
-    "open shift",
-    "identity",
-    "entra id",
-    "developer productivity"
-  ];
-
-  let score = 30;
-  for (const skill of strongSkills) if (text.includes(skill)) score += 5;
-  for (const skill of relevantSkills) if (text.includes(skill)) score += 3;
-  if (/java/.test(text) && /spring boot/.test(text)) score += 12;
-  if (["Sponsorship mentioned - verify", "Confirmed by recruiter"].includes(classifySponsorship(text))) {
-    score += 10;
-  }
-  if (/senior|staff|principal|architect|10\+ years/.test(text)) score -= 20;
-  if (/intern|internship|unpaid/.test(text)) score -= 40;
-  return Math.max(0, Math.min(100, score));
-}
-
 export function normalizeAdzuna(ad, region) {
   const description = normalizeText(ad.description || "");
   const url = ad.redirect_url || ad.url || "";
@@ -156,7 +130,14 @@ export async function fetchAdzunaJobs() {
   const remainingSearches = LOCATION_QUERIES.flatMap((location) =>
     location.terms.slice(1).map((term) => ({ location, term }))
   );
-  const searches = [...regionFirstSearches, ...remainingSearches].slice(0, maxSearches);
+  const extraCount = maxSearches - regionFirstSearches.length;
+  const rotation = Math.floor(Date.now() / 86400000) % remainingSearches.length;
+  const searches = selectRotatedSearches(
+    regionFirstSearches,
+    remainingSearches,
+    extraCount,
+    rotation
+  );
   const jobs = [];
   const errors = [];
   const results = await mapWithConcurrency(searches, 4, async ({ location, term }) => {
@@ -187,7 +168,11 @@ export async function fetchAdzunaJobs() {
     }
   }
 
-  return { jobs, errors };
+  return {
+    jobs,
+    errors,
+    refreshedSources: errors.length ? [] : ["Adzuna"]
+  };
 }
 
 function normalizeJobicy(job) {
@@ -250,7 +235,11 @@ async function fetchJobicyJobs() {
     if (jobs.length !== validListings.length) {
       errors.push(`Jobicy: skipped ${validListings.length - jobs.length} listing(s) without an application URL`);
     }
-    return { jobs, errors };
+    return {
+      jobs,
+      errors,
+      refreshedSources: errors.length ? [] : ["Jobicy"]
+    };
   } catch (error) {
     return { jobs: [], errors: [`Jobicy: ${error.message || error}`] };
   }
@@ -293,7 +282,7 @@ async function fetchRemoteOKJobs() {
       .filter((item) => item && item.id && (item.position || item.title))
       .map(normalizeRemoteOK)
       .filter((job) => job.applyUrl);
-    return { jobs, errors: [] };
+    return { jobs, errors: [], refreshedSources: ["Remote OK"] };
   } catch (error) {
     return { jobs: [], errors: [`Remote OK: ${error.message || error}`] };
   }
@@ -302,24 +291,26 @@ async function fetchRemoteOKJobs() {
 export async function fetchAllJobSources() {
   const startedAt = Date.now();
   const providers = [
-    ["Adzuna", fetchAdzunaJobs],
-    ["Jobicy", fetchJobicyJobs],
-    ["Remote OK", fetchRemoteOKJobs],
-    ["ATS", () => fetchATSJobs(scoreJob)],
-    ["Jooble", () => fetchJoobleJobs(scoreJob)]
+    ["Adzuna", fetchAdzunaJobs, ["Adzuna"]],
+    ["Jobicy", fetchJobicyJobs, ["Jobicy"]],
+    ["Remote OK", fetchRemoteOKJobs, ["Remote OK"]],
+    ["ATS", () => fetchATSJobs(scoreJob), []],
+    ["Jooble", () => fetchJoobleJobs(scoreJob), ["Jooble"]]
   ];
   const results = await Promise.all(
-    providers.map(async ([name, fetchJobs]) => {
+    providers.map(async ([name, fetchJobs, sources]) => {
       const providerStartedAt = Date.now();
       try {
         return {
           name,
+          sources,
           result: await fetchJobs(),
           durationMs: Date.now() - providerStartedAt
         };
       } catch (error) {
         return {
           name,
+          sources,
           error,
           durationMs: Date.now() - providerStartedAt
         };
@@ -330,6 +321,7 @@ export async function fetchAllJobSources() {
   const errors = [];
   const skipped = [];
   const providerTimings = {};
+  const refreshedSources = [];
 
   for (const provider of results) {
     providerTimings[provider.name] = provider.durationMs;
@@ -344,6 +336,11 @@ export async function fetchAllJobSources() {
       error.startsWith(`${provider.name}:`) ? error : `${provider.name}: ${error}`
     ));
     if (result.skipped) skipped.push(`${provider.name}: ${result.skipped}`);
+    if (result.refreshedSources) {
+      refreshedSources.push(...result.refreshedSources);
+    } else if (!(result.errors || []).length && !result.skipped) {
+      refreshedSources.push(...provider.sources);
+    }
     if ((result.errors || []).length) {
       console.warn(`${provider.name} provider reported errors`, {
         durationMs: provider.durationMs,
@@ -357,33 +354,7 @@ export async function fetchAllJobSources() {
     errors,
     skipped,
     durationMs: Date.now() - startedAt,
-    providerTimings
+    providerTimings,
+    refreshedSources: [...new Set(refreshedSources)]
   };
-}
-
-export function countJobsBySource(jobs) {
-  return jobs.reduce((counts, job) => {
-    counts[job.source] = (counts[job.source] || 0) + 1;
-    return counts;
-  }, {});
-}
-
-export function dedupeJobs(jobs) {
-  const seen = new Set();
-  return jobs.filter((job) => {
-    const key = getJobDedupeKey(job);
-    if (!key || seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  }).sort((a, b) => (b.fitScore || 0) - (a.fitScore || 0));
-}
-
-export function getJobDedupeKey(job) {
-  const urlKey = job.applyUrl?.trim().toLowerCase().replace(/\/$/, "") || "";
-  if (urlKey) return urlKey;
-
-  const fallbackKey = `${job.title || ""}|${job.company || ""}|${job.region || ""}`
-    .toLowerCase()
-    .replace(/\s+/g, " ");
-  return fallbackKey.replace(/\|/g, "").trim() ? fallbackKey : "";
 }

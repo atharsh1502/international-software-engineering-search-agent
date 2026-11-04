@@ -1,5 +1,5 @@
 import { store, JOBS_KEY, META_KEY } from "./_shared.mjs";
-import { normalizeRegion } from "./providers/job-utils.mjs";
+import { filterJobs } from "./providers/job-utils.mjs";
 
 export default async (request) => {
   try {
@@ -8,25 +8,11 @@ export default async (request) => {
     const metadata = await blobStore.get(META_KEY, { type: "json" }) || { lastUpdated: null, sources: [], count: jobs.length };
 
     const url = new URL(request.url);
-    const q = (url.searchParams.get("q") || "").toLowerCase().trim();
+    const q = url.searchParams.get("q") || "";
     const region = url.searchParams.get("region") || "all";
     const category = url.searchParams.get("category") || "all";
     const minScore = Number(url.searchParams.get("minScore") || 0);
-    const filtered = jobs.filter((job) => {
-      const text = `${job.title} ${job.company} ${job.location} ${job.description}`.toLowerCase();
-      const matchesQuery = !q || text.includes(q);
-      const matchesRegion = region === "all" ||
-        (region === "Remote" ? normalizeRegion(job.region) === "Remote" : job.region === region);
-      const score = Number(job.fitScore || 0);
-      const matchesScore = score >= minScore;
-      const visaText = `${job.visa || ""} ${job.description || ""}`.toLowerCase();
-      const matchesCategory = category === "all" ||
-        (category === "visa" && /sponsor|visa|work permit|relocation/.test(visaText)) ||
-        (category === "highfit" && score >= 75) ||
-        (category === "backend" && /java|spring|backend|microservice/.test(text)) ||
-        (category === "fullstack" && /full.?stack|react|angular/.test(text));
-      return matchesQuery && matchesRegion && matchesScore && matchesCategory;
-    });
+    const filtered = filterJobs(jobs, { q, region, category, minScore });
 
     return new Response(JSON.stringify({
       jobs: filtered,

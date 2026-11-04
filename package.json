@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "netlify dev",
     "build": "node scripts/build.js",
+    "test": "node --test",
     "deploy": "netlify deploy --prod"
   },
   "dependencies": {

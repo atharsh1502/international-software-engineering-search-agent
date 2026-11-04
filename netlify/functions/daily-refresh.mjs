@@ -3,9 +3,8 @@ import {
   JOBS_KEY,
   META_KEY,
   fetchAllJobSources,
-  dedupeJobs,
-  getJobDedupeKey,
-  countJobsBySource
+  countJobsBySource,
+  mergeJobs
 } from "./_shared.mjs";
 
 export default async () => {
@@ -14,7 +13,8 @@ export default async () => {
     errors = [],
     skipped = [],
     durationMs,
-    providerTimings = {}
+    providerTimings = {},
+    refreshedSources = []
   } = await fetchAllJobSources();
   if (!incoming.length) {
     const blobStore = store();
@@ -31,7 +31,9 @@ export default async () => {
       errors: errors.slice(0, 20),
       skipped,
       refreshDurationMs: durationMs,
-      providerTimings
+      providerTimings,
+      refreshedSources,
+      expiredJobs: 0
     };
     await blobStore.setJSON(META_KEY, metadata);
     console.warn("Daily refresh returned no jobs", { skipped, errors, durationMs, providerTimings });
@@ -40,14 +42,7 @@ export default async () => {
 
   const blobStore = store();
   const existing = await blobStore.get(JOBS_KEY, { type: "json" }) || [];
-  const map = new Map();
-  for (const job of [...existing, ...incoming]) {
-    const key = getJobDedupeKey(job);
-    if (!key) continue;
-    const previous = map.get(key);
-    if (!previous || new Date(job.fetchedAt || 0) > new Date(previous.fetchedAt || 0)) map.set(key, job);
-  }
-  const jobs = dedupeJobs([...map.values()]);
+  const { jobs, expiredCount } = mergeJobs(existing, incoming, refreshedSources);
   await blobStore.setJSON(JOBS_KEY, jobs);
   await blobStore.setJSON(META_KEY, {
     lastUpdated: new Date().toISOString(),
@@ -60,7 +55,9 @@ export default async () => {
     errors: errors.slice(0, 20),
     skipped,
     refreshDurationMs: durationMs,
-    providerTimings
+    providerTimings,
+    expiredJobs: expiredCount,
+    refreshedSources
   });
   console.log(`Daily job refresh complete: ${incoming.length} fetched; ${jobs.length} stored`, {
     durationMs,

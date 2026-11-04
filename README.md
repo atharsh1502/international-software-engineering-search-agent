@@ -78,7 +78,9 @@ curl -X POST "https://YOUR-SITE.netlify.app/api/refresh" \
 3. Jobs are normalized, deduplicated and fit-scored.
 4. The current snapshot is stored in Netlify Blobs.
 5. Frontend calls `/api/jobs` to display the current snapshot.
-6. Refresh metadata includes source counts, provider errors, skipped optional providers, and refresh duration.
+6. Refresh metadata includes source counts, provider errors, skipped optional providers, refresh duration, and expired-listing counts.
+
+Listings older than 45 days are removed only when their provider completed successfully. Existing listings from failed or unconfigured providers are retained until that provider succeeds again.
 
 ## Job data providers
 
@@ -116,7 +118,9 @@ Singapore, Malaysia, UAE, Saudi Arabia, Qatar, Oman, Kuwait and Bahrain.
 - Adzuna may not return vacancies for every region or query. Empty responses preserve the last successful snapshot.
 - Netlify Scheduled Functions have a 30-second execution limit; the code runs API queries concurrently.
 - Adzuna runs at most eight searches by default, prioritizing one search per target region. `MAX_ADZUNA_SEARCHES` is capped at twelve to leave time for other providers within Netlify's function limit.
+- Additional Adzuna search terms rotate daily to distribute searches more evenly across regions.
 - Refresh metadata records the total duration and each provider's duration; provider requests have timeouts and bounded concurrency.
+- Run `npm test` for region normalization, sponsorship classification, matching, filtering, deduplication, Adzuna rotation, and provider-aware job-expiration checks.
 - If API credentials have been committed to a public repository, rotate them in the provider/Netlify dashboards. Clearing the template does not invalidate previously exposed credentials.
 
 ## 8. Security notes

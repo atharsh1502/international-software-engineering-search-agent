@@ -3,9 +3,8 @@ import {
   JOBS_KEY,
   META_KEY,
   fetchAllJobSources,
-  dedupeJobs,
-  getJobDedupeKey,
-  countJobsBySource
+  countJobsBySource,
+  mergeJobs
 } from "./_shared.mjs";
 
 export default async (request) => {
@@ -24,7 +23,8 @@ export default async (request) => {
     errors = [],
     skipped = [],
     durationMs,
-    providerTimings = {}
+    providerTimings = {},
+    refreshedSources = []
   } = await fetchAllJobSources();
   if (!incoming.length) {
     const currentStore = store();
@@ -41,24 +41,19 @@ export default async (request) => {
       errors: errors.slice(0, 20),
       skipped,
       refreshDurationMs: durationMs,
-      providerTimings
+      providerTimings,
+      refreshedSources,
+      expiredJobs: 0
     };
     await currentStore.setJSON(META_KEY, metadata);
-    return new Response(JSON.stringify({ ok: false, imported: 0, skipped, errors, durationMs, providerTimings, note: "No API results returned; existing stored jobs were preserved." }), {
+    return new Response(JSON.stringify({ ok: false, imported: 0, skipped, errors, durationMs, providerTimings, refreshedSources, note: "No API results returned; existing stored jobs were preserved." }), {
       status: 502, headers: { "content-type": "application/json" }
     });
   }
 
   const currentStore = store();
   const existing = await currentStore.get(JOBS_KEY, { type: "json" }) || [];
-  const byKey = new Map();
-  for (const job of [...existing, ...incoming]) {
-    const key = getJobDedupeKey(job);
-    if (!key) continue;
-    const old = byKey.get(key);
-    if (!old || new Date(job.fetchedAt || 0) > new Date(old.fetchedAt || 0)) byKey.set(key, job);
-  }
-  const merged = dedupeJobs([...byKey.values()]);
+  const { jobs: merged, expiredCount } = mergeJobs(existing, incoming, refreshedSources);
   const metadata = {
     lastUpdated: new Date().toISOString(),
     attemptedAt: new Date().toISOString(),
@@ -70,7 +65,9 @@ export default async (request) => {
     errors: errors.slice(0, 20),
     skipped,
     refreshDurationMs: durationMs,
-    providerTimings
+    providerTimings,
+    expiredJobs: expiredCount,
+    refreshedSources
   };
   await currentStore.setJSON(JOBS_KEY, merged);
   await currentStore.setJSON(META_KEY, metadata);
