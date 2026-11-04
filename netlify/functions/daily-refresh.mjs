@@ -1,9 +1,38 @@
-import { store, JOBS_KEY, META_KEY, fetchAllJobSources, dedupeJobs, getJobDedupeKey } from "./_shared.mjs";
+import {
+  store,
+  JOBS_KEY,
+  META_KEY,
+  fetchAllJobSources,
+  dedupeJobs,
+  getJobDedupeKey,
+  countJobsBySource
+} from "./_shared.mjs";
 
 export default async () => {
-  const { jobs: incoming, errors = [], skipped = [] } = await fetchAllJobSources();
+  const {
+    jobs: incoming,
+    errors = [],
+    skipped = [],
+    durationMs
+  } = await fetchAllJobSources();
   if (!incoming.length) {
-    console.warn("Daily refresh returned no jobs", { skipped, errors });
+    const blobStore = store();
+    const previousMetadata = await blobStore.get(META_KEY, { type: "json" }) || {};
+    const jobs = await blobStore.get(JOBS_KEY, { type: "json" }) || [];
+    const metadata = {
+      ...previousMetadata,
+      attemptedAt: new Date().toISOString(),
+      status: "failed",
+      sources: [],
+      sourceCounts: {},
+      count: jobs.length,
+      newlyFetched: 0,
+      errors: errors.slice(0, 20),
+      skipped,
+      refreshDurationMs: durationMs
+    };
+    await blobStore.setJSON(META_KEY, metadata);
+    console.warn("Daily refresh returned no jobs", { skipped, errors, durationMs });
     return;
   }
 
@@ -20,16 +49,17 @@ export default async () => {
   await blobStore.setJSON(JOBS_KEY, jobs);
   await blobStore.setJSON(META_KEY, {
     lastUpdated: new Date().toISOString(),
+    attemptedAt: new Date().toISOString(),
+    status: errors.length || skipped.length ? "partial" : "success",
     sources: [...new Set(incoming.map((job) => job.source))],
-    sourceCounts: incoming.reduce((counts, job) => {
-      counts[job.source] = (counts[job.source] || 0) + 1;
-      return counts;
-    }, {}),
+    sourceCounts: countJobsBySource(incoming),
     count: jobs.length,
     newlyFetched: incoming.length,
-    errors: errors.slice(0, 20)
+    errors: errors.slice(0, 20),
+    skipped,
+    refreshDurationMs: durationMs
   });
-  console.log(`Daily job refresh complete: ${incoming.length} fetched; ${jobs.length} stored`);
+  console.log(`Daily job refresh complete: ${incoming.length} fetched; ${jobs.length} stored`, { durationMs });
 };
 
 export const config = { schedule: "30 23 * * *" }; // 05:00 India time (UTC+5:30)

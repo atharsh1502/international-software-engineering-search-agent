@@ -35,7 +35,9 @@ You need `app_id` and `app_key`. API coverage and results vary by country; verif
 5. In Netlify Site configuration → Environment variables, add:
    - `ADZUNA_APP_ID` = your Adzuna app ID
    - `ADZUNA_APP_KEY` = your Adzuna API key
-   - `JOB_REFRESH_SECRET` = a long random secret (use a password manager or generate one : 43ff77f7488248d6a171f4245b2a804c)
+   - `JOB_REFRESH_SECRET` = a long random secret generated for this deployment
+   - `JOOBLE_API_KEY` = your Jooble API key (optional)
+   - `ATS_COMPANIES_JSON` = JSON array of configured Greenhouse, Lever, Ashby, or SmartRecruiters boards (optional)
 6. Ensure the variables are available to Functions. Trigger a new deploy after adding them.
 7. Deploy:
    ```bash
@@ -71,10 +73,11 @@ curl -X POST "https://YOUR-SITE.netlify.app/api/refresh" \
 
 ## 4. How data flows
 1. Netlify Scheduled Function queries Adzuna for configured regions and search terms, plus Jobicy and Remote OK for remote listings.
-2. Jobs are normalized, deduplicated and fit-scored.
-3. The current snapshot is stored in Netlify Blobs.
-4. Frontend calls `/api/jobs` to display the current snapshot.
-5. Refresh metadata shows last successful sync.
+2. Optional Jooble and configured employer career boards (Greenhouse, Lever, Ashby, and SmartRecruiters) add listings.
+3. Jobs are normalized, deduplicated and fit-scored.
+4. The current snapshot is stored in Netlify Blobs.
+5. Frontend calls `/api/jobs` to display the current snapshot.
+6. Refresh metadata includes source counts, provider errors, skipped optional providers, and refresh duration.
 
 ## Job data providers
 
@@ -83,6 +86,10 @@ The dashboard aggregates job listings from:
 - Adzuna — regional job search API
 - Jobicy — remote job listings
 - Remote OK — remote job listings
+- Jooble — regional job search API (requires `JOOBLE_API_KEY`)
+- Greenhouse, Lever, Ashby, and SmartRecruiters — public company career boards configured through `ATS_COMPANIES_JSON`
+
+Each ATS company entry requires a company display name, an `ats` provider identifier, and its provider-specific `board` identifier. Confirm the board identifier with the employer's careers site before adding it. See `.env.example` for the supported environment variable names.
 
 Jobicy and Remote OK primarily provide remote opportunities. Listings may not
 be located in GCC countries. The application uses keyword-based matching to

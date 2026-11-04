@@ -1,4 +1,12 @@
-import { store, JOBS_KEY, META_KEY, fetchAllJobSources, dedupeJobs, getJobDedupeKey } from "./_shared.mjs";
+import {
+  store,
+  JOBS_KEY,
+  META_KEY,
+  fetchAllJobSources,
+  dedupeJobs,
+  getJobDedupeKey,
+  countJobsBySource
+} from "./_shared.mjs";
 
 export default async (request) => {
   if (request.method !== "POST") return new Response("POST only", { status: 405 });
@@ -11,9 +19,30 @@ export default async (request) => {
     });
   }
 
-  const { jobs: incoming, errors = [], skipped = [] } = await fetchAllJobSources();
+  const {
+    jobs: incoming,
+    errors = [],
+    skipped = [],
+    durationMs
+  } = await fetchAllJobSources();
   if (!incoming.length) {
-    return new Response(JSON.stringify({ ok: false, imported: 0, skipped, errors, note: "No API results returned; existing stored jobs were preserved." }), {
+    const currentStore = store();
+    const previousMetadata = await currentStore.get(META_KEY, { type: "json" }) || {};
+    const jobs = await currentStore.get(JOBS_KEY, { type: "json" }) || [];
+    const metadata = {
+      ...previousMetadata,
+      attemptedAt: new Date().toISOString(),
+      status: "failed",
+      sources: [],
+      sourceCounts: {},
+      count: jobs.length,
+      newlyFetched: 0,
+      errors: errors.slice(0, 20),
+      skipped,
+      refreshDurationMs: durationMs
+    };
+    await currentStore.setJSON(META_KEY, metadata);
+    return new Response(JSON.stringify({ ok: false, imported: 0, skipped, errors, durationMs, note: "No API results returned; existing stored jobs were preserved." }), {
       status: 502, headers: { "content-type": "application/json" }
     });
   }
@@ -30,14 +59,15 @@ export default async (request) => {
   const merged = dedupeJobs([...byKey.values()]);
   const metadata = {
     lastUpdated: new Date().toISOString(),
+    attemptedAt: new Date().toISOString(),
+    status: errors.length || skipped.length ? "partial" : "success",
     sources: [...new Set(incoming.map((job) => job.source))],
-    sourceCounts: incoming.reduce((counts, job) => {
-      counts[job.source] = (counts[job.source] || 0) + 1;
-      return counts;
-    }, {}),
+    sourceCounts: countJobsBySource(incoming),
     count: merged.length,
     newlyFetched: incoming.length,
-    errors: errors.slice(0, 20)
+    errors: errors.slice(0, 20),
+    skipped,
+    refreshDurationMs: durationMs
   };
   await currentStore.setJSON(JOBS_KEY, merged);
   await currentStore.setJSON(META_KEY, metadata);

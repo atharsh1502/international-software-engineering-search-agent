@@ -1,4 +1,5 @@
 const timeout = 12000;
+const concurrency = 4;
 
 function clean(value = "") {
   return String(value)
@@ -12,6 +13,49 @@ function normalizeDate(value) {
   if (!value) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function smartRecruitersLocation(location = {}) {
+  const city = clean(location.city || location.region || "");
+  const countryValue = location.country;
+  const country = clean(
+    typeof countryValue === "string"
+      ? countryValue
+      : countryValue?.label || countryValue?.name || ""
+  );
+  return [city, country].filter(Boolean).join(", ") || (location.remote ? "Remote" : "");
+}
+
+function normalizeRegion(location) {
+  const value = clean(location || "");
+  const normalized = value.toLowerCase();
+  const regions = [
+    ["Singapore", /\bsingapore\b|\bsg\b/],
+    ["Malaysia", /\bmalaysia\b|\bmy\b/],
+    ["United Arab Emirates", /\bunited arab emirates\b|\bu\.?a\.?e\.?\b|\buae\b|\bdubai\b|\babu dhabi\b|\bsharjah\b/],
+    ["Saudi Arabia", /\bsaudi arabia\b|\bksa\b|\briyadh\b|\bjeddah\b/],
+    ["Qatar", /\bqatar\b|\bdoha\b/],
+    ["Oman", /\boman\b|\bmuscat\b/],
+    ["Kuwait", /\bkuwait\b/],
+    ["Bahrain", /\bbahrain\b|\bmanama\b/]
+  ];
+
+  for (const [region, pattern] of regions) {
+    if (pattern.test(normalized)) return region;
+  }
+  if (!value || /remote|worldwide|anywhere|work from anywhere/i.test(value)) {
+    return "Remote";
+  }
+  return value;
+}
+
+function isSecureApplyUrl(value) {
+  if (typeof value !== "string") return false;
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 function normalizeJob({
@@ -31,9 +75,9 @@ function normalizeJob({
     title: clean(title || "Software Engineer"),
     company: clean(company || "Not listed"),
     location: clean(location || "Not specified"),
-    region: clean(location || "Not specified"),
+    region: normalizeRegion(location),
     description: text,
-    applyUrl: url || "",
+    applyUrl: isSecureApplyUrl(url) ? new URL(url).href : "",
     postedAt: postedAt || null,
     salary: "Not disclosed",
     visa: /visa sponsorship|work permit|relocation support|sponsor.*visa/i.test(text)
@@ -61,6 +105,27 @@ async function getJson(url) {
   }
 
   return response.json();
+}
+
+async function mapWithConcurrency(items, limit, mapper) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < items.length) {
+      const index = nextIndex++;
+      try {
+        results[index] = { status: "fulfilled", value: await mapper(items[index]) };
+      } catch (reason) {
+        results[index] = { status: "rejected", reason };
+      }
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, () => worker())
+  );
+  return results;
 }
 
 async function fetchGreenhouse(company, scoreJob) {
@@ -101,9 +166,51 @@ async function fetchLever(company, scoreJob) {
   );
 }
 
+async function fetchAshby(company, scoreJob) {
+  const url =
+    `https://api.ashbyhq.com/posting-api/job-board/${encodeURIComponent(company.board)}`;
+  const data = await getJson(url);
+
+  return (data.jobs || []).map((job) =>
+    normalizeJob({
+      source: "Ashby",
+      id: job.id,
+      title: job.title,
+      company: company.name,
+      location: job.location,
+      description: job.descriptionHtml,
+      url: job.jobUrl,
+      postedAt: job.publishedAt
+    }, scoreJob)
+  );
+}
+
+async function fetchSmartRecruiters(company, scoreJob) {
+  const url =
+    `https://api.smartrecruiters.com/v1/companies/${encodeURIComponent(company.board)}/postings?limit=100`;
+  const data = await getJson(url);
+
+  return (data.content || []).map((job) =>
+    normalizeJob({
+      source: "SmartRecruiters",
+      id: job.id,
+      title: job.name,
+      company: company.name,
+      location: smartRecruitersLocation(job.location),
+      description: job.jobAd?.sections?.jobDescription?.text || "",
+      url: job.id
+        ? `https://jobs.smartrecruiters.com/${encodeURIComponent(company.board)}/${encodeURIComponent(job.id)}`
+        : "",
+      postedAt: job.releasedDate
+    }, scoreJob)
+  );
+}
+
 const providers = {
   greenhouse: fetchGreenhouse,
-  lever: fetchLever
+  lever: fetchLever,
+  ashby: fetchAshby,
+  smartrecruiters: fetchSmartRecruiters
 };
 
 export async function fetchATSJobs(scoreJob) {
@@ -135,28 +242,33 @@ export async function fetchATSJobs(scoreJob) {
 
   const jobs = [];
   const errors = [];
-  const results = await Promise.allSettled(
-    companies.map(async (company) => {
-      if (!company || typeof company !== "object" || Array.isArray(company)) {
-        throw new Error("Company entry must be an object");
-      }
+  const results = await mapWithConcurrency(companies, concurrency, async (company) => {
+    if (!company || typeof company !== "object" || Array.isArray(company)) {
+      throw new Error("Company entry must be an object");
+    }
 
-      const providerName = String(company.ats || "").toLowerCase();
-      if (!Object.hasOwn(providers, providerName)) {
-        throw new Error(`Unsupported ATS: ${company.ats || "unspecified"}`);
-      }
-      if (typeof company.board !== "string" || !company.board.trim()) {
-        throw new Error("Company board identifier is required");
-      }
-
-      return providers[providerName](company, scoreJob);
-    })
-  );
+    const providerName = String(company.ats || "").toLowerCase();
+    if (!Object.hasOwn(providers, providerName)) {
+      throw new Error(`Unsupported ATS: ${company.ats || "unspecified"}`);
+    }
+    if (typeof company.board !== "string" || !company.board.trim()) {
+      throw new Error("Company board identifier is required");
+    }
+    return providers[providerName](company, scoreJob);
+  });
 
   for (let i = 0; i < results.length; i++) {
     const result = results[i];
     if (result.status === "fulfilled") {
-      jobs.push(...result.value);
+      const secureJobs = result.value.filter((job) => isSecureApplyUrl(job.applyUrl));
+      jobs.push(...secureJobs);
+      if (secureJobs.length !== result.value.length) {
+        errors.push(
+          `${companies[i]?.name || "Unknown company"}: skipped ${
+            result.value.length - secureJobs.length
+          } listing(s) without a valid HTTPS application URL`
+        );
+      }
     } else {
       errors.push(
         `${companies[i]?.name || "Unknown company"}: ${

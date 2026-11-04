@@ -1,5 +1,6 @@
 import { getStore } from "@netlify/blobs";
 import { fetchATSJobs } from "./providers/ats.mjs";
+import { fetchJoobleJobs } from "./providers/jooble.mjs";
 
 export const STORE_NAME = "atharsh-job-search";
 export const JOBS_KEY = "jobs-v1";
@@ -254,11 +255,13 @@ async function fetchRemoteOKJobs() {
 }
 
 export async function fetchAllJobSources() {
+  const startedAt = Date.now();
   const results = await Promise.allSettled([
     fetchAdzunaJobs(),
     fetchJobicyJobs(),
     fetchRemoteOKJobs(),
-    fetchATSJobs(scoreJob)
+    fetchATSJobs(scoreJob),
+    fetchJoobleJobs(scoreJob)
   ]);
   const jobs = [];
   const errors = [];
@@ -274,7 +277,19 @@ export async function fetchAllJobSources() {
     }
   }
 
-  return { jobs: dedupeJobs(jobs), errors, skipped };
+  return {
+    jobs: dedupeJobs(jobs),
+    errors,
+    skipped,
+    durationMs: Date.now() - startedAt
+  };
+}
+
+export function countJobsBySource(jobs) {
+  return jobs.reduce((counts, job) => {
+    counts[job.source] = (counts[job.source] || 0) + 1;
+    return counts;
+  }, {});
 }
 
 export function dedupeJobs(jobs) {
