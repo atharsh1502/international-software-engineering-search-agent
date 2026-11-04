@@ -2,6 +2,7 @@ const state = { jobs: [], metadata: {}, view: "jobs" };
 const $ = (id) => document.getElementById(id);
 const escapeHtml = (s="") => String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 const fmtDate = (s) => { if(!s) return "Date not listed"; const d=new Date(s); return Number.isNaN(d.getTime())?"Date not listed":d.toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"}); };
+function isRemoteRegion(value="") { return /remote|worldwide|anywhere/i.test(value) || ["Singapore","Malaysia","United Arab Emirates","Saudi Arabia","Qatar","Oman","Kuwait","Bahrain"].filter(region=>value.toLowerCase().includes(region.toLowerCase())).length>1; }
 function initials(s="") { return s.split(/\s+/).filter(Boolean).slice(0,2).map(x=>x[0]).join("").toUpperCase() || "CO"; }
 function showView(view) {
   state.view=view;
@@ -28,7 +29,7 @@ function renderStats() {
 function getFiltered() {
   let jobs=[...state.jobs], q=$("searchInput").value.trim().toLowerCase(), region=$("regionFilter").value, category=$("categoryFilter").value, sort=$("sortFilter").value;
   if(q) jobs=jobs.filter(j=>`${j.title} ${j.company} ${j.description} ${j.location}`.toLowerCase().includes(q));
-  if(region!=="all") jobs=jobs.filter(j=>j.region===region);
+  if(region!=="all") jobs=jobs.filter(j=>region==="Remote"?isRemoteRegion(j.region||""):(j.region===region));
   if(category==="backend") jobs=jobs.filter(j=>/java|spring|backend|microservice/i.test(`${j.title} ${j.description}`));
   if(category==="fullstack") jobs=jobs.filter(j=>/full.?stack|react|angular/i.test(`${j.title} ${j.description}`));
   if(category==="highfit") jobs=jobs.filter(j=>(j.fitScore||0)>=75);

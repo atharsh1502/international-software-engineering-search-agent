@@ -1,4 +1,5 @@
 import { store, JOBS_KEY, META_KEY } from "./_shared.mjs";
+import { normalizeRegion } from "./providers/job-utils.mjs";
 
 export default async (request) => {
   try {
@@ -14,7 +15,8 @@ export default async (request) => {
     const filtered = jobs.filter((job) => {
       const text = `${job.title} ${job.company} ${job.location} ${job.description}`.toLowerCase();
       const matchesQuery = !q || text.includes(q);
-      const matchesRegion = region === "all" || job.region === region;
+      const matchesRegion = region === "all" ||
+        (region === "Remote" ? normalizeRegion(job.region) === "Remote" : job.region === region);
       const score = Number(job.fitScore || 0);
       const matchesScore = score >= minScore;
       const visaText = `${job.visa || ""} ${job.description || ""}`.toLowerCase();

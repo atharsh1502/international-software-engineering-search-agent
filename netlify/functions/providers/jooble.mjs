@@ -1,4 +1,8 @@
-import { classifySponsorship, isSecureApplyUrl } from "./job-utils.mjs";
+import {
+  classifyJoobleSponsorship,
+  isSecureApplyUrl,
+  normalizeRegion
+} from "./job-utils.mjs";
 
 const SEARCHES = [
   { keyword: "Java Spring Boot Developer", location: "United Arab Emirates" },
@@ -80,12 +84,12 @@ async function fetchSearch(apiKey, search) {
         title: clean(job.title || "Software Engineer"),
         company: clean(job.company || "Not listed"),
         location: clean(job.location || search.location),
-        region: search.location,
+        region: normalizeRegion(job.location || search.location),
         description,
         applyUrl: new URL(job.link).href,
         postedAt: normalizeDate(job.updated),
         salary: clean(job.salary || "Not disclosed"),
-        visa: classifySponsorship(description),
+        visa: classifyJoobleSponsorship(description),
         experience: "Check job description",
         fitScore: 0,
         status: "Found via API; verify application status",

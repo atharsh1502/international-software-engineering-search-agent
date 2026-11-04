@@ -12,11 +12,21 @@ const regions = [
 export function normalizeRegion(location) {
   const value = String(location || "").trim();
   const normalized = value.toLowerCase();
+  const matchedRegions = regions
+    .filter(([, pattern]) => pattern.test(normalized))
+    .map(([region]) => region);
 
-  for (const [region, pattern] of regions) {
-    if (pattern.test(normalized)) return region;
+  if (/remote|worldwide|anywhere|work from anywhere/i.test(value)) {
+    return "Remote";
   }
-  if (!value || /remote|worldwide|anywhere|work from anywhere/i.test(value)) {
+  if (matchedRegions.length > 1) {
+    return "Remote";
+  }
+  if (matchedRegions.length === 1) {
+    return matchedRegions[0];
+  }
+
+  if (!value) {
     return "Remote";
   }
   return value;
@@ -40,5 +50,13 @@ export function classifySponsorship(text = "", confirmedByRecruiter = false) {
   if (confirmedByRecruiter === true) return "Confirmed by recruiter";
   if (sponsorshipDenialPattern.test(text)) return "Sponsorship unavailable";
   if (sponsorshipMentionPattern.test(text)) return "Sponsorship mentioned - verify";
+  return "Sponsorship not stated";
+}
+
+export function classifyJoobleSponsorship(snippet = "") {
+  if (sponsorshipDenialPattern.test(snippet)) return "Sponsorship unavailable";
+  if (/visa sponsorship|visa assistance|employment visa provided|work authorization sponsorship|sponsorship available|sponsor(?:ed|ship)?\s+(?:for|a|the|your|international)|visa support/i.test(snippet)) {
+    return "Sponsorship mentioned - verify";
+  }
   return "Sponsorship not stated";
 }

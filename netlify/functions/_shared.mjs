@@ -1,7 +1,7 @@
 import { getStore } from "@netlify/blobs";
 import { fetchATSJobs } from "./providers/ats.mjs";
 import { fetchJoobleJobs } from "./providers/jooble.mjs";
-import { classifySponsorship } from "./providers/job-utils.mjs";
+import { classifySponsorship, normalizeRegion } from "./providers/job-utils.mjs";
 
 export const STORE_NAME = "atharsh-job-search";
 export const JOBS_KEY = "jobs-v1";
@@ -199,7 +199,7 @@ function normalizeJobicy(job) {
     title: normalizeText(job.jobTitle || job.title || "Software Engineer"),
     company: normalizeText(job.companyName || job.company || "Not listed"),
     location: normalizeText(job.jobGeo || job.location || "Remote"),
-    region: normalizeText(job.jobGeo || "Remote"),
+    region: normalizeRegion(job.jobGeo || "Remote"),
     description,
     applyUrl: url,
     postedAt: job.pubDate || job.datePosted || null,
@@ -265,7 +265,7 @@ function normalizeRemoteOK(job) {
     title: normalizeText(job.position || job.title || "Software Engineer"),
     company: normalizeText(job.company || "Not listed"),
     location: normalizeText(job.location || "Remote"),
-    region: normalizeText(job.location || "Remote"),
+    region: normalizeRegion(job.location || "Remote"),
     description,
     applyUrl: job.apply_url || url,
     postedAt: job.date || null,
