@@ -1,4 +1,4 @@
-import { store, JOBS_KEY, META_KEY, fetchAdzunaJobs, dedupeJobs } from "./_shared.mjs";
+import { store, JOBS_KEY, META_KEY, fetchAllJobSources, dedupeJobs } from "./_shared.mjs";
 
 export default async (request) => {
   if (request.method !== "POST") return new Response("POST only", { status: 405 });
@@ -11,7 +11,7 @@ export default async (request) => {
     });
   }
 
-  const { jobs: incoming, errors = [], skipped } = await fetchAdzunaJobs();
+  const { jobs: incoming, errors = [], skipped = [] } = await fetchAllJobSources();
   if (!incoming.length) {
     return new Response(JSON.stringify({ ok: false, imported: 0, skipped, errors, note: "No API results returned; existing stored jobs were preserved." }), {
       status: 502, headers: { "content-type": "application/json" }
@@ -29,7 +29,7 @@ export default async (request) => {
   const merged = dedupeJobs([...byKey.values()]);
   const metadata = {
     lastUpdated: new Date().toISOString(),
-    sources: ["Adzuna API"],
+    sources: ["Adzuna", "Jobicy", "Remote OK"],
     count: merged.length,
     newlyFetched: incoming.length,
     errors: errors.slice(0, 20)

@@ -1,7 +1,7 @@
-import { store, JOBS_KEY, META_KEY, fetchAdzunaJobs, dedupeJobs } from "./_shared.mjs";
+import { store, JOBS_KEY, META_KEY, fetchAllJobSources, dedupeJobs } from "./_shared.mjs";
 
 export default async () => {
-  const { jobs: incoming, errors = [], skipped } = await fetchAdzunaJobs();
+  const { jobs: incoming, errors = [], skipped = [] } = await fetchAllJobSources();
   if (!incoming.length) {
     console.warn("Daily refresh returned no jobs", { skipped, errors });
     return;
@@ -19,7 +19,7 @@ export default async () => {
   await blobStore.setJSON(JOBS_KEY, jobs);
   await blobStore.setJSON(META_KEY, {
     lastUpdated: new Date().toISOString(),
-    sources: ["Adzuna API"],
+    sources: ["Adzuna", "Jobicy", "Remote OK"],
     count: jobs.length,
     newlyFetched: incoming.length,
     errors: errors.slice(0, 20)

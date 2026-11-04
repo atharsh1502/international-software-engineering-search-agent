@@ -2,7 +2,7 @@
 
 A Netlify-ready job discovery dashboard with:
 - Responsive web dashboard for GCC, Singapore and Malaysia
-- Server-side job API integration (Adzuna)
+- Server-side job API integrations (Adzuna, Jobicy and Remote OK)
 - Daily scheduled job search/refresh at **05:00 India Standard Time**
 - Persistent job snapshots using Netlify Blobs
 - Fit scoring, keyword/region filters, job application links and sponsorship signal labels
@@ -70,11 +70,25 @@ curl -X POST "https://YOUR-SITE.netlify.app/api/refresh" \
 ```
 
 ## 4. How data flows
-1. Netlify Scheduled Function calls Adzuna for configured regions and search terms.
+1. Netlify Scheduled Function queries Adzuna for configured regions and search terms, plus Jobicy and Remote OK for remote listings.
 2. Jobs are normalized, deduplicated and fit-scored.
 3. The current snapshot is stored in Netlify Blobs.
 4. Frontend calls `/api/jobs` to display the current snapshot.
 5. Refresh metadata shows last successful sync.
+
+## Job data providers
+
+The dashboard aggregates job listings from:
+
+- Adzuna — regional job search API
+- Jobicy — remote job listings
+- Remote OK — remote job listings
+
+Jobicy and Remote OK primarily provide remote opportunities. Listings may not
+be located in GCC countries. The application uses keyword-based matching to
+estimate relevance. Visa sponsorship labels are based on listing text and must
+be verified directly with the employer. Each listing includes its source
+provider where available.
 
 ## 5. Regions currently searched
 Singapore, Malaysia, UAE, Saudi Arabia, Qatar, Oman, Kuwait and Bahrain.

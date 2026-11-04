@@ -114,6 +114,117 @@ export async function fetchAdzunaJobs() {
   return { jobs: all, errors };
 }
 
+function normalizeJobicy(job) {
+  const description = normalizeText(job.jobDescription || job.description || "");
+  const url = job.url || job.jobUrl || "";
+  const normalized = {
+    id: `jobicy-${job.id || Buffer.from(url).toString("base64").slice(0, 18)}`,
+    source: "Jobicy",
+    title: normalizeText(job.jobTitle || job.title || "Software Engineer"),
+    company: normalizeText(job.companyName || job.company || "Not listed"),
+    location: normalizeText(job.jobGeo || job.location || "Remote"),
+    region: normalizeText(job.jobGeo || "Remote"),
+    description,
+    applyUrl: url,
+    postedAt: job.pubDate || job.datePosted || null,
+    salary: job.annualSalary || job.salary || "Not disclosed",
+    visa: /visa sponsorship|work permit|relocation support|sponsor.*visa/i.test(description)
+      ? "Mentioned — verify with employer"
+      : "Not stated — ask recruiter",
+    experience: "Check job description",
+    fitScore: 0,
+    status: "Found via API; verify application status",
+    fetchedAt: new Date().toISOString()
+  };
+  normalized.fitScore = scoreJob(normalized);
+  return normalized;
+}
+
+async function fetchJobicyJobs() {
+  try {
+    const response = await fetch("https://jobicy.com/api/v2/remote-jobs?count=50", {
+      signal: AbortSignal.timeout(15000)
+    });
+    if (!response.ok) throw new Error(`Jobicy HTTP ${response.status}`);
+
+    const data = await response.json();
+    const jobs = (Array.isArray(data.jobs) ? data.jobs : [])
+      .map(normalizeJobicy)
+      .filter((job) => job.applyUrl);
+    return { jobs, errors: [] };
+  } catch (error) {
+    return { jobs: [], errors: [`Jobicy: ${error.message || error}`] };
+  }
+}
+
+function normalizeRemoteOK(job) {
+  const description = normalizeText(job.description || "");
+  const url = job.url || "";
+  const normalized = {
+    id: `remoteok-${job.id || Buffer.from(url).toString("base64").slice(0, 18)}`,
+    source: "Remote OK",
+    title: normalizeText(job.position || job.title || "Software Engineer"),
+    company: normalizeText(job.company || "Not listed"),
+    location: normalizeText(job.location || "Remote"),
+    region: normalizeText(job.location || "Remote"),
+    description,
+    applyUrl: job.apply_url || url,
+    postedAt: job.date || null,
+    salary: job.salary || "Not disclosed",
+    visa: /visa sponsorship|work permit|relocation support|sponsor.*visa/i.test(description)
+      ? "Mentioned — verify with employer"
+      : "Not stated — ask recruiter",
+    experience: "Check job description",
+    fitScore: 0,
+    status: "Found via API; verify application status",
+    fetchedAt: new Date().toISOString()
+  };
+  normalized.fitScore = scoreJob(normalized);
+  return normalized;
+}
+
+async function fetchRemoteOKJobs() {
+  try {
+    const response = await fetch("https://remoteok.com/api", {
+      headers: { "User-Agent": "AtharshJobSearchDashboard/1.0" },
+      signal: AbortSignal.timeout(15000)
+    });
+    if (!response.ok) throw new Error(`Remote OK HTTP ${response.status}`);
+
+    const data = await response.json();
+    const jobs = (Array.isArray(data) ? data : [])
+      .filter((item) => item && item.id && (item.position || item.title))
+      .map(normalizeRemoteOK)
+      .filter((job) => job.applyUrl);
+    return { jobs, errors: [] };
+  } catch (error) {
+    return { jobs: [], errors: [`Remote OK: ${error.message || error}`] };
+  }
+}
+
+export async function fetchAllJobSources() {
+  const results = await Promise.allSettled([
+    fetchAdzunaJobs(),
+    fetchJobicyJobs(),
+    fetchRemoteOKJobs()
+  ]);
+  const jobs = [];
+  const errors = [];
+  const skipped = [];
+
+  for (const result of results) {
+    if (result.status === "fulfilled") {
+      jobs.push(...(result.value.jobs || []));
+      errors.push(...(result.value.errors || []));
+      if (result.value.skipped) skipped.push(result.value.skipped);
+    } else {
+      errors.push(String(result.reason?.message || result.reason));
+    }
+  }
+
+  return { jobs: dedupeJobs(jobs), errors, skipped };
+}
+
 export function dedupeJobs(jobs) {
   const seen = new Set();
   return jobs.filter((job) => {
