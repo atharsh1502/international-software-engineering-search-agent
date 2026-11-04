@@ -1,4 +1,4 @@
-import { store, JOBS_KEY, META_KEY, fetchAllJobSources, dedupeJobs } from "./_shared.mjs";
+import { store, JOBS_KEY, META_KEY, fetchAllJobSources, dedupeJobs, getJobDedupeKey } from "./_shared.mjs";
 
 export default async (request) => {
   if (request.method !== "POST") return new Response("POST only", { status: 405 });
@@ -22,7 +22,8 @@ export default async (request) => {
   const existing = await currentStore.get(JOBS_KEY, { type: "json" }) || [];
   const byKey = new Map();
   for (const job of [...existing, ...incoming]) {
-    const key = `${job.title}|${job.company}|${job.region}`.toLowerCase().replace(/\s+/g, " ");
+    const key = getJobDedupeKey(job);
+    if (!key) continue;
     const old = byKey.get(key);
     if (!old || new Date(job.fetchedAt || 0) > new Date(old.fetchedAt || 0)) byKey.set(key, job);
   }

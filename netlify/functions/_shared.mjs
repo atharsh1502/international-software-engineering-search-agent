@@ -253,9 +253,19 @@ export async function fetchAllJobSources() {
 export function dedupeJobs(jobs) {
   const seen = new Set();
   return jobs.filter((job) => {
-    const key = `${job.title}|${job.company}|${job.region}`.toLowerCase().replace(/\s+/g, " ");
-    if (!job.applyUrl || seen.has(key)) return false;
+    const key = getJobDedupeKey(job);
+    if (!key || seen.has(key)) return false;
     seen.add(key);
     return true;
   }).sort((a, b) => (b.fitScore || 0) - (a.fitScore || 0));
+}
+
+export function getJobDedupeKey(job) {
+  const urlKey = job.applyUrl?.trim().toLowerCase().replace(/\/$/, "") || "";
+  if (urlKey) return urlKey;
+
+  const fallbackKey = `${job.title || ""}|${job.company || ""}|${job.region || ""}`
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+  return fallbackKey.replace(/\|/g, "").trim() ? fallbackKey : "";
 }

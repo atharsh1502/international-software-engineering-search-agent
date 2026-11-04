@@ -1,4 +1,4 @@
-import { store, JOBS_KEY, META_KEY, fetchAllJobSources, dedupeJobs } from "./_shared.mjs";
+import { store, JOBS_KEY, META_KEY, fetchAllJobSources, dedupeJobs, getJobDedupeKey } from "./_shared.mjs";
 
 export default async () => {
   const { jobs: incoming, errors = [], skipped = [] } = await fetchAllJobSources();
@@ -11,7 +11,8 @@ export default async () => {
   const existing = await blobStore.get(JOBS_KEY, { type: "json" }) || [];
   const map = new Map();
   for (const job of [...existing, ...incoming]) {
-    const key = `${job.title}|${job.company}|${job.region}`.toLowerCase().replace(/\s+/g, " ");
+    const key = getJobDedupeKey(job);
+    if (!key) continue;
     const previous = map.get(key);
     if (!previous || new Date(job.fetchedAt || 0) > new Date(previous.fetchedAt || 0)) map.set(key, job);
   }
