@@ -35,7 +35,7 @@ You need `app_id` and `app_key`. API coverage and results vary by country; verif
 5. In Netlify Site configuration → Environment variables, add:
    - `ADZUNA_APP_ID` = your Adzuna app ID
    - `ADZUNA_APP_KEY` = your Adzuna API key
-   - `JOB_REFRESH_SECRET` = a long random secret (use a password manager or generate one)
+   - `JOB_REFRESH_SECRET` = a long random secret (use a password manager or generate one : 43ff77f7488248d6a171f4245b2a804c)
 6. Ensure the variables are available to Functions. Trigger a new deploy after adding them.
 7. Deploy:
    ```bash

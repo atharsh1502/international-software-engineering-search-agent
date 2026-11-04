@@ -1,4 +1,5 @@
 import { getStore } from "@netlify/blobs";
+import { fetchATSJobs } from "./providers/ats.mjs";
 
 export const STORE_NAME = "atharsh-job-search";
 export const JOBS_KEY = "jobs-v1";
@@ -45,15 +46,40 @@ function normalizeText(value = "") {
 
 export function scoreJob(job) {
   const text = `${job.title || ""} ${job.description || ""} ${job.company || ""}`.toLowerCase();
-  const strong = ["java", "spring boot", "microservices", "rest", "backend", "react", "angular", "oauth", "oidc", "jwt", "kafka", "docker", "kubernetes", "ci/cd"];
-  const differentiators = ["identity", "entra", "developer productivity", "ai agent", "mcp", "typescript", "postgresql"];
-  let score = 35;
-  for (const keyword of strong) if (text.includes(keyword)) score += 4;
-  for (const keyword of differentiators) if (text.includes(keyword)) score += 3;
-  if (/senior|staff|principal|lead architect|8\+ years|10\+ years/.test(text)) score -= 18;
-  if (/intern|internship|unpaid|commission only/.test(text)) score -= 35;
-  if (/java/.test(text) && /spring/.test(text)) score += 8;
-  return Math.max(20, Math.min(98, score));
+  const strongSkills = [
+    "java",
+    "spring boot",
+    "microservices",
+    "rest api",
+    "backend",
+    "react",
+    "angular",
+    "oauth",
+    "oidc",
+    "jwt",
+    "kafka",
+    "docker",
+    "kubernetes"
+  ];
+  const relevantSkills = [
+    "postgresql",
+    "typescript",
+    "jenkins",
+    "tekton",
+    "open shift",
+    "identity",
+    "entra id",
+    "developer productivity"
+  ];
+
+  let score = 30;
+  for (const skill of strongSkills) if (text.includes(skill)) score += 5;
+  for (const skill of relevantSkills) if (text.includes(skill)) score += 3;
+  if (/java/.test(text) && /spring boot/.test(text)) score += 12;
+  if (/visa sponsorship|work visa sponsorship|employer sponsored visa/i.test(text)) score += 10;
+  if (/senior|staff|principal|architect|10\+ years/.test(text)) score -= 20;
+  if (/intern|internship|unpaid/.test(text)) score -= 40;
+  return Math.max(0, Math.min(100, score));
 }
 
 export function normalizeAdzuna(ad, region) {
@@ -231,7 +257,8 @@ export async function fetchAllJobSources() {
   const results = await Promise.allSettled([
     fetchAdzunaJobs(),
     fetchJobicyJobs(),
-    fetchRemoteOKJobs()
+    fetchRemoteOKJobs(),
+    fetchATSJobs(scoreJob)
   ]);
   const jobs = [];
   const errors = [];

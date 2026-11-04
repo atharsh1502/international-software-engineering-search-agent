@@ -21,6 +21,10 @@ export default async () => {
   await blobStore.setJSON(META_KEY, {
     lastUpdated: new Date().toISOString(),
     sources: [...new Set(incoming.map((job) => job.source))],
+    sourceCounts: incoming.reduce((counts, job) => {
+      counts[job.source] = (counts[job.source] || 0) + 1;
+      return counts;
+    }, {}),
     count: jobs.length,
     newlyFetched: incoming.length,
     errors: errors.slice(0, 20)
