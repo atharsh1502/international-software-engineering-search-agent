@@ -150,10 +150,33 @@ async function fetchJobicyJobs() {
     if (!response.ok) throw new Error(`Jobicy HTTP ${response.status}`);
 
     const data = await response.json();
-    const jobs = (Array.isArray(data.jobs) ? data.jobs : [])
+    const listings = Array.isArray(data)
+      ? data
+      : Array.isArray(data?.jobs)
+        ? data.jobs
+        : Array.isArray(data?.data?.jobs)
+          ? data.data.jobs
+          : Array.isArray(data?.results)
+            ? data.results
+            : null;
+
+    if (!listings) {
+      const keys = data && typeof data === "object" ? Object.keys(data).join(", ") : typeof data;
+      throw new Error(`Unexpected response schema (received: ${keys || "no object keys"})`);
+    }
+
+    const validListings = listings.filter((item) => item && typeof item === "object" && !Array.isArray(item));
+    const jobs = validListings
       .map(normalizeJobicy)
-      .filter((job) => job.applyUrl);
-    return { jobs, errors: [] };
+      .filter((job) => typeof job.applyUrl === "string" && job.applyUrl.trim());
+    const errors = [];
+    if (validListings.length !== listings.length) {
+      errors.push(`Jobicy: skipped ${listings.length - validListings.length} malformed listing(s)`);
+    }
+    if (jobs.length !== validListings.length) {
+      errors.push(`Jobicy: skipped ${validListings.length - jobs.length} listing(s) without an application URL`);
+    }
+    return { jobs, errors };
   } catch (error) {
     return { jobs: [], errors: [`Jobicy: ${error.message || error}`] };
   }
