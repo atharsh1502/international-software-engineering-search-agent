@@ -147,3 +147,116 @@ test("reports ATS company entries without names as invalid configuration", async
     else process.env.ATS_COMPANIES_JSON = previous;
   }
 });
+
+test("returns ATS source names only when all configured boards for that source refresh", async () => {
+  const previousCompanies = process.env.ATS_COMPANIES_JSON;
+  const originalFetch = globalThis.fetch;
+  process.env.ATS_COMPANIES_JSON = JSON.stringify([
+    { name: "Greenhouse Co", ats: "greenhouse", board: "greenhouse" },
+    { name: "Lever Co", ats: "lever", board: "lever" },
+    { name: "Ashby Co", ats: "ashby", board: "ashby" },
+    { name: "SmartRecruiters Co", ats: "smartrecruiters", board: "smartrecruiters" }
+  ]);
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    if (url.includes("greenhouse")) {
+      return {
+        ok: true,
+        json: async () => ({
+          jobs: [{
+            id: "gh-1",
+            title: "Java Engineer",
+            absolute_url: "https://jobs.example/gh-1",
+            location: { name: "Singapore" }
+          }]
+        })
+      };
+    }
+    if (url.includes("lever")) {
+      return {
+        ok: true,
+        json: async () => [{
+          id: "lever-1",
+          text: "Java Engineer",
+          hostedUrl: "https://jobs.example/lever-1",
+          categories: { location: "Malaysia" }
+        }]
+      };
+    }
+    if (url.includes("ashby")) {
+      return {
+        ok: true,
+        json: async () => ({
+          jobs: [{
+            id: "ashby-1",
+            title: "Java Engineer",
+            jobUrl: "https://jobs.example/ashby-1",
+            location: "Remote"
+          }]
+        })
+      };
+    }
+    return {
+      ok: true,
+      json: async () => ({
+        content: [{
+          id: "sr-1",
+          name: "Java Engineer",
+          location: { city: "Doha", country: "Qatar" }
+        }]
+      })
+    };
+  };
+
+  try {
+    const result = await fetchATSJobs(scoreJob);
+    assert.deepEqual(result.refreshedSources.sort(), [
+      "Ashby",
+      "Greenhouse",
+      "Lever",
+      "SmartRecruiters"
+    ]);
+    assert.deepEqual(result.errors, []);
+    assert.equal(result.jobs.length, 4);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousCompanies === undefined) delete process.env.ATS_COMPANIES_JSON;
+    else process.env.ATS_COMPANIES_JSON = previousCompanies;
+  }
+});
+
+test("does not mark an ATS source refreshed when one configured board fails", async () => {
+  const previousCompanies = process.env.ATS_COMPANIES_JSON;
+  const originalFetch = globalThis.fetch;
+  process.env.ATS_COMPANIES_JSON = JSON.stringify([
+    { name: "Working Board", ats: "greenhouse", board: "working" },
+    { name: "Unavailable Board", ats: "greenhouse", board: "unavailable" }
+  ]);
+  globalThis.fetch = async (input) => {
+    if (String(input).includes("/unavailable/")) {
+      return { ok: false, status: 503, json: async () => ({}) };
+    }
+    return {
+      ok: true,
+      json: async () => ({
+        jobs: [{
+          id: "gh-1",
+          title: "Java Engineer",
+          absolute_url: "https://jobs.example/gh-1",
+          location: { name: "Singapore" }
+        }]
+      })
+    };
+  };
+
+  try {
+    const result = await fetchATSJobs(scoreJob);
+    assert.deepEqual(result.refreshedSources, []);
+    assert.equal(result.jobs.length, 1);
+    assert.match(result.errors[0], /Unavailable Board: HTTP 503/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousCompanies === undefined) delete process.env.ATS_COMPANIES_JSON;
+    else process.env.ATS_COMPANIES_JSON = previousCompanies;
+  }
+});
