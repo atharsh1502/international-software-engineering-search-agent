@@ -13,6 +13,7 @@
       <div class="brand"><div class="brand-mark">AG</div><div><b>ATHARSH G.</b><small>SEARCH AGENT</small></div></div>
       <div class="side-label">WORKSPACE</div>
       <button class="nav active" data-view="jobs">▦ <span>Job Discovery</span></button>
+      <button class="nav" data-view="resume">▤ <span>Resume Match</span></button>
       <button class="nav" data-view="profile">◉ <span>Candidate Profile</span></button>
       <button class="nav" data-view="insights">⌁ <span>Market Insights</span></button>
       <div class="sidebar-bottom">
@@ -53,6 +54,7 @@
             <select id="categoryFilter"><option value="all">All role types</option><option value="backend">Java / Backend</option><option value="fullstack">Full Stack</option><option value="highfit">High fit (75+)</option><option value="visa">Sponsorship mentioned</option></select>
             <select id="sortFilter"><option value="fit">Best fit</option><option value="date">Newest first</option></select>
           </div>
+          <div id="providerNotice" class="provider-notice hidden" role="status"></div>
           <div id="jobsList" class="jobs-list"><div class="loading-card"><div class="spinner"></div><b>Connecting to job API…</b><span>Loading stored job results.</span></div></div>
           <div id="emptyState" class="empty-state hidden"><div class="empty-icon">⌕</div><h3>No jobs match these filters</h3><p>Try a broader keyword or region selection.</p><button class="btn btn-light" id="clearFilters">Clear filters</button></div>
         </div>
@@ -75,6 +77,35 @@
         <div class="panel profile-detail"><h3>Professional positioning</h3><p>Software Engineer at Ford with 2+ years of experience in Java, Spring Boot, microservices, React/Angular, enterprise identity, API development, CI/CD and AI-assisted developer productivity.</p><h3>Core strengths</h3><div class="skill-pills large"><span>Java</span><span>Spring Boot</span><span>Microservices</span><span>REST APIs</span><span>React</span><span>Angular</span><span>TypeScript</span><span>OAuth 2.0 / OIDC / JWT</span><span>Microsoft Entra ID</span><span>Kafka / RabbitMQ</span><span>Docker / Kubernetes</span><span>Jenkins / Tekton</span><span>GCP / OpenShift</span><span>MCP / AI coding agents</span></div><h3>Recommended resume headline</h3><div class="resume-headline">Software Engineer | Java, Spring Boot, Microservices | React/Angular | Identity & AI Developer Productivity</div><h3>Application note</h3><p>Indian citizen based in India; open to relocation and requires employer-sponsored work authorization.</p></div>
       </section>
 
+      <section id="resumeView" class="secondary-view hidden">
+        <div class="section-head"><div><div class="eyebrow">PRIVATE, IN-BROWSER ANALYSIS</div><h2>Resume match checker</h2></div></div>
+        <div class="panel resume-panel">
+          <h3>Upload your resume</h3>
+          <p>Choose a PDF, DOCX, or TXT file. Text is extracted in your browser and is not uploaded or saved.</p>
+          <label class="resume-upload" for="resumeFile">
+            <span class="resume-upload-icon">↑</span>
+            <b>Select a resume</b>
+            <small>PDF, DOCX, or TXT · 10 MB maximum</small>
+          </label>
+          <input id="resumeFile" type="file" accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain">
+          <div id="resumeStatus" class="resume-status" role="status" aria-live="polite">Your file stays on this device. Scanned PDFs without selectable text need OCR first.</div>
+          <div id="resumeResults" class="resume-results hidden">
+            <div class="resume-summary">
+              <div><small>RESUME KEYWORDS</small><strong id="resumeKeywordCount">0</strong></div>
+              <div><small>BEST JOB MATCH</small><strong id="resumeBestScore">—</strong></div>
+              <button id="clearResume" class="btn btn-light" type="button">Clear resume</button>
+            </div>
+            <h3>Detected skills</h3>
+            <div id="resumeSkillTags" class="skill-pills large"></div>
+            <h3>Extracted keywords</h3>
+            <div id="resumeKeywordTags" class="skill-pills large"></div>
+            <h3>Best matches from current jobs</h3>
+            <p class="resume-disclaimer">Estimated keyword overlap only—not an employer ATS score or hiring prediction.</p>
+            <div id="resumeMatchList" class="resume-match-list"></div>
+          </div>
+        </div>
+      </section>
+
       <section id="insightsView" class="secondary-view hidden">
         <div class="section-head"><div><div class="eyebrow">SEARCH INTELLIGENCE</div><h2>Daily search configuration</h2></div></div>
         <div class="panel profile-detail"><h3>Scheduled refresh</h3><p>Netlify Scheduled Function runs at <b>05:00 India Standard Time</b> each day (23:30 UTC). It searches the configured regions and merges results into Netlify Blobs storage.</p><h3>Data provider</h3><p>Adzuna API is configured as the initial job data provider. You must add API credentials in Netlify environment variables before data can populate.</p><h3>API setup status</h3><div id="setupNotice" class="setup-notice">Checking backend configuration…</div><h3>Next integrations</h3><p>Recommended future sources: employer career-site feeds (Greenhouse/Lever where available), additional job APIs, and an email digest. LinkedIn/Indeed scraping is intentionally not included; use official APIs or approved feeds.</p></div>
@@ -83,6 +114,7 @@
       <footer><span>ATHARSH G. · INTERNATIONAL SOFTWARE ENGINEERING SEARCH AGENT</span><span>Private candidate dashboard · Not an employer or recruiter</span></footer>
     </main>
   </div>
-  <script src="/app.js"></script>
+  <script src="/vendor/mammoth.browser.min.js"></script>
+  <script type="module" src="/app.js"></script>
 </body>
 </html>

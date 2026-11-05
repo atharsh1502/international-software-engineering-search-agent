@@ -1,4 +1,14 @@
+import * as pdfjsLib from "./vendor/pdf.min.mjs";
+import {
+  extractResumeKeywords,
+  extractResumeText,
+  scoreResumeAgainstJob
+} from "./resume-matcher.mjs";
+
 const state = { jobs: [], metadata: {}, view: "jobs" };
+state.resumeKeywords = [];
+state.resumeSkills = [];
+pdfjsLib.GlobalWorkerOptions.workerSrc = "/vendor/pdf.worker.min.mjs";
 const $ = (id) => document.getElementById(id);
 const escapeHtml = (s="") => String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 const fmtDate = (s) => { if(!s) return "Date not listed"; const d=new Date(s); return Number.isNaN(d.getTime())?"Date not listed":d.toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"}); };
@@ -12,6 +22,7 @@ function showView(view) {
   document.querySelector(".hero").classList.toggle("hidden",view!=="jobs");
   document.querySelector(".right-column").classList.toggle("hidden",view!=="jobs");
   $("profileView").classList.toggle("hidden",view!=="profile");
+  $("resumeView").classList.toggle("hidden",view!=="resume");
   $("insightsView").classList.toggle("hidden",view!=="insights");
 }
 function renderStats() {
@@ -25,6 +36,15 @@ function renderStats() {
   $("setupNotice").textContent=state.jobs.length
     ? `Loaded ${state.jobs.length} records. Last sync: ${date?new Date(date).toLocaleString():"not recorded"}.`
     : "No stored jobs yet. Configure ADZUNA_APP_ID and ADZUNA_APP_KEY in Netlify Site configuration → Environment variables, then deploy and run the daily-refresh function.";
+  const providerIssues=[
+    ...(Array.isArray(state.metadata.errors)?state.metadata.errors:[]),
+    ...(Array.isArray(state.metadata.skipped)?state.metadata.skipped:[])
+  ];
+  const notice=$("providerNotice");
+  notice.innerHTML=providerIssues.length
+    ? `<b>Some job sources did not return results:</b> ${providerIssues.slice(0,5).map(escapeHtml).join(" · ")}${providerIssues.length>5?` · and ${providerIssues.length-5} more`:``}`
+    : "";
+  notice.classList.toggle("hidden",providerIssues.length===0);
 }
 function getFiltered() {
   let jobs=[...state.jobs], q=$("searchInput").value.trim().toLowerCase(), region=$("regionFilter").value, category=$("categoryFilter").value, sort=$("sortFilter").value;
@@ -60,6 +80,30 @@ function renderJobs() {
   $("emptyState").classList.toggle("hidden",jobs.length>0);
   $("jobsList").classList.toggle("hidden",jobs.length===0);
 }
+function renderResumeResults() {
+  const keywords = state.resumeKeywords;
+  const matches = state.jobs.map(job => ({
+    job,
+    ...scoreResumeAgainstJob(keywords, job)
+  })).sort((a,b)=>b.score-a.score).slice(0,10);
+  $("resumeKeywordCount").textContent=keywords.length;
+  $("resumeBestScore").textContent=matches.length?`${matches[0].score}%`:"—";
+  $("resumeSkillTags").innerHTML=state.resumeSkills.length
+    ? state.resumeSkills.map(skill=>`<span>${escapeHtml(skill)}</span>`).join("")
+    : '<span>No recognized skills found; keyword matches are still shown.</span>';
+  $("resumeKeywordTags").innerHTML=keywords.map(keyword=>`<span>${escapeHtml(keyword)}</span>`).join("");
+  $("resumeMatchList").innerHTML=matches.length?matches.map(({job,score,matchedKeywords,missingKeywords})=>`
+    <article class="resume-match-card">
+      <div class="resume-match-heading">
+        <div><b>${escapeHtml(job.title||"Software Engineer")}</b><small>${escapeHtml(job.company||"Company not listed")} · ${escapeHtml(job.region||job.location||"Region not listed")}</small></div>
+        <strong>${score}%</strong>
+      </div>
+      <div class="resume-match-keywords"><b>Matched:</b> ${escapeHtml(matchedKeywords.slice(0,8).join(", ")||"No direct keyword matches")}</div>
+      ${missingKeywords.length?`<div class="resume-match-keywords muted"><b>Consider emphasizing if accurate:</b> ${escapeHtml(missingKeywords.slice(0,5).join(", "))}</div>`:""}
+      <a class="apply-btn" href="${escapeHtml(job.applyUrl||"#")}" target="_blank" rel="noopener noreferrer" ${job.applyUrl?"":"aria-disabled='true'"}>View / Apply ↗</a>
+    </article>`).join(""):'<p>No current jobs are loaded to compare against.</p>';
+  $("resumeResults").classList.remove("hidden");
+}
 async function loadJobs() {
   $("jobsList").innerHTML='<div class="loading-card"><div class="spinner"></div><b>Loading current job results…</b><span>Reading the daily API snapshot.</span></div>';
   try {
@@ -68,6 +112,7 @@ async function loadJobs() {
     const data=await response.json();
     state.jobs=data.jobs||[];state.metadata=data.metadata||{};
     renderStats();renderJobs();
+    if(state.resumeKeywords.length) renderResumeResults();
   } catch(error) {
     $("jobsList").innerHTML=`<div class="loading-card"><b>Could not connect to the job API.</b><span>${escapeHtml(error.message)}. Check Netlify deployment and environment setup.</span></div>`;
     $("setupNotice").textContent="API endpoint is not reachable yet. Deploy the project to Netlify, then configure the API keys.";
@@ -85,6 +130,33 @@ $("refreshBtn").addEventListener("click", async () => {
     button.disabled = false;
     button.textContent = "↻ Reload saved jobs";
   }
+});
+$("resumeFile").addEventListener("change", async (event) => {
+  const file=event.target.files?.[0];
+  if(!file) return;
+  $("resumeStatus").textContent="Reading resume locally…";
+  $("resumeResults").classList.add("hidden");
+  try {
+    const text=await extractResumeText(file,window.mammoth,pdfjsLib);
+    if(!text.trim()) throw new Error("No readable text found. Scanned PDFs need OCR before upload.");
+    const result=extractResumeKeywords(text);
+    if(!result.keywords.length) throw new Error("Could not identify searchable keywords in this resume.");
+    state.resumeKeywords=result.keywords;
+    state.resumeSkills=result.skills;
+    $("resumeStatus").textContent=`Analyzed ${file.name} locally. Resume text was not uploaded or saved.`;
+    renderResumeResults();
+  } catch(error) {
+    state.resumeKeywords=[];
+    state.resumeSkills=[];
+    $("resumeStatus").textContent=error.message||"Unable to read this resume.";
+  }
+});
+$("clearResume").addEventListener("click",()=>{
+  state.resumeKeywords=[];
+  state.resumeSkills=[];
+  $("resumeFile").value="";
+  $("resumeResults").classList.add("hidden");
+  $("resumeStatus").textContent="Your file stays on this device. Scanned PDFs without selectable text need OCR first.";
 });
 ["searchInput","regionFilter","categoryFilter","sortFilter"].forEach(id=>$(id).addEventListener(id==="searchInput"?"input":"change",renderJobs));
 $("clearFilters").addEventListener("click",()=>{$("searchInput").value="";$("regionFilter").value="all";$("categoryFilter").value="all";renderJobs();});

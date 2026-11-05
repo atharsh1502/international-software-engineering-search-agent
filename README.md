@@ -6,6 +6,7 @@ A Netlify-ready job discovery dashboard with:
 - Daily scheduled job search/refresh at **05:00 India Standard Time**
 - Persistent job snapshots using Netlify Blobs
 - Fit scoring, keyword/region filters, job application links and sponsorship signal labels
+- In-browser resume keyword extraction and estimated job matching for PDF, DOCX and TXT
 - API keys kept server-side in Netlify environment variables
 
 ## Important: Hosting status
@@ -100,6 +101,12 @@ estimate relevance. Visa sponsorship labels are based on listing text and must
 be verified directly with the employer. Each listing includes its source
 provider where available.
 
+The Resume Match page reads PDF, DOCX and TXT files locally in the browser.
+Resume contents are not sent to the server or saved. It compares extracted
+keywords with the currently loaded job descriptions; its percentage is an
+estimate, not a score from an employer's ATS. Scanned PDFs require OCR before
+their text can be analyzed.
+
 ## 5. Regions currently searched
 Singapore, Malaysia, UAE, Saudi Arabia, Qatar, Oman, Kuwait and Bahrain.
 
@@ -115,7 +122,8 @@ Singapore, Malaysia, UAE, Saudi Arabia, Qatar, Oman, Kuwait and Bahrain.
 - Schedule uses UTC. `30 23 * * *` = 05:00 next day IST.
 - Check Netlify Functions logs for `daily-refresh`.
 - Check environment variable scope and redeploy after changing variables.
-- Adzuna may not return vacancies for every region or query. Empty responses preserve the last successful snapshot.
+- Adzuna may not return vacancies for every region or query. HTTP 404 responses mean the requested country endpoint or API access is unavailable; HTTP 429 responses mean the API rate limit was reached. Check the provider errors shown on the dashboard and in Netlify function logs.
+- A recent live refresh returned HTTP 404 for Adzuna country codes Malaysia (`my`), UAE (`ae`), Qatar (`qa`), Oman (`om`), Kuwait (`kw`) and Bahrain (`bh`), and HTTP 429 for Saudi Arabia (`sa`). This means those Adzuna searches did not populate those markets; it is not a dashboard region-filter issue. Remote OK and Jobicy can still add remote listings, but they do not guarantee GCC-specific jobs. Configure Jooble or employer boards as additional regional sources, and confirm Adzuna API country coverage/access with Adzuna.
 - Netlify Scheduled Functions have a 30-second execution limit; the code runs API queries concurrently.
 - Adzuna runs at most eight searches by default, prioritizing one search per target region. `MAX_ADZUNA_SEARCHES` is capped at twelve to leave time for other providers within Netlify's function limit.
 - Additional Adzuna search terms rotate daily to distribute searches more evenly across regions.
