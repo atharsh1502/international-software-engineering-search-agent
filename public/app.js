@@ -40,9 +40,17 @@ function renderStats() {
     ...(Array.isArray(state.metadata.errors)?state.metadata.errors:[]),
     ...(Array.isArray(state.metadata.skipped)?state.metadata.skipped:[])
   ];
+  const providerHints=[
+    ["ATS: ATS_COMPANIES_JSON not configured","ATS is off: add verified employer career-board entries to ATS_COMPANIES_JSON in Netlify."],
+    ["Jooble: Jooble API key not configured","Jooble is off: add JOOBLE_API_KEY in Netlify."],
+    ["JSearch API key not configured","JSearch is off: add JSEARCH_API_KEY in Netlify."]
+  ];
+  const readableIssues=providerIssues.map(issue=>
+    providerHints.find(([prefix])=>issue.startsWith(prefix))?.[1]||issue
+  );
   const notice=$("providerNotice");
   notice.innerHTML=providerIssues.length
-    ? `<b>Some job sources did not return results:</b> ${providerIssues.slice(0,5).map(escapeHtml).join(" · ")}${providerIssues.length>5?` · and ${providerIssues.length-5} more`:``}`
+    ? `<b>Some job sources did not return results:</b> ${readableIssues.slice(0,5).map(escapeHtml).join(" · ")}${readableIssues.length>5?` · and ${readableIssues.length-5} more`:``}`
     : "";
   notice.classList.toggle("hidden",providerIssues.length===0);
 }

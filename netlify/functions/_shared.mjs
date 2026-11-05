@@ -1,6 +1,7 @@
 import { getStore } from "@netlify/blobs";
 import { fetchATSJobs } from "./providers/ats.mjs";
 import { fetchJoobleJobs } from "./providers/jooble.mjs";
+import { fetchJSearchJobs } from "./providers/jsearch.mjs";
 import {
   classifySponsorship,
   dedupeJobs,
@@ -295,7 +296,8 @@ export async function fetchAllJobSources() {
     ["Jobicy", fetchJobicyJobs, ["Jobicy"]],
     ["Remote OK", fetchRemoteOKJobs, ["Remote OK"]],
     ["ATS", () => fetchATSJobs(scoreJob), []],
-    ["Jooble", () => fetchJoobleJobs(scoreJob), ["Jooble"]]
+    ["Jooble", () => fetchJoobleJobs(scoreJob), ["Jooble"]],
+    ["JSearch", () => fetchJSearchJobs(scoreJob), ["JSearch"]]
   ];
   const results = await Promise.all(
     providers.map(async ([name, fetchJobs, sources]) => {

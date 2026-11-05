@@ -1,12 +1,12 @@
 const regions = [
   ["Singapore", /\bsingapore\b|\bsg\b/],
   ["Malaysia", /\bmalaysia\b|\bmy\b/],
-  ["United Arab Emirates", /\bunited arab emirates\b|\bu\.?a\.?e\.?\b|\buae\b|\bdubai\b|\babu dhabi\b|\bsharjah\b/],
-  ["Saudi Arabia", /\bsaudi arabia\b|\bksa\b|\briyadh\b|\bjeddah\b/],
-  ["Qatar", /\bqatar\b|\bdoha\b/],
-  ["Oman", /\boman\b|\bmuscat\b/],
-  ["Kuwait", /\bkuwait\b/],
-  ["Bahrain", /\bbahrain\b|\bmanama\b/]
+  ["United Arab Emirates", /\bunited arab emirates\b|\bu\.?a\.?e\.?\b|\buae\b|\bae\b|\bdubai\b|\babu dhabi\b|\bsharjah\b/],
+  ["Saudi Arabia", /\bsaudi arabia\b|\bksa\b|\bsa\b|\briyadh\b|\bjeddah\b/],
+  ["Qatar", /\bqatar\b|\bqa\b|\bdoha\b/],
+  ["Oman", /\boman\b|\bom\b|\bmuscat\b/],
+  ["Kuwait", /\bkuwait\b|\bkw\b/],
+  ["Bahrain", /\bbahrain\b|\bbh\b|\bmanama\b/]
 ];
 
 export function normalizeRegion(location) {

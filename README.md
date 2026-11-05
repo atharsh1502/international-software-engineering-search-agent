@@ -38,6 +38,7 @@ You need `app_id` and `app_key`. API coverage and results vary by country; verif
    - `ADZUNA_APP_KEY` = your Adzuna API key
    - `JOB_REFRESH_SECRET` = a long random secret generated for this deployment
    - `JOOBLE_API_KEY` = your Jooble API key (optional)
+   - `JSEARCH_API_KEY` = your JSearch RapidAPI key (optional; searches UAE, Saudi Arabia, Qatar, Oman, Kuwait, Bahrain, Malaysia and Singapore)
    - `ATS_COMPANIES_JSON` = JSON array of configured Greenhouse, Lever, Ashby, or SmartRecruiters boards (optional)
    - `MAX_ADZUNA_SEARCHES` = maximum Adzuna searches per refresh (default `8`, valid range `1`–`12`)
 6. Ensure the variables are available to Functions. Trigger a new deploy after adding them.
@@ -75,7 +76,7 @@ curl -X POST "https://YOUR-SITE.netlify.app/api/refresh" \
 
 ## 4. How data flows
 1. Netlify Scheduled Function queries Adzuna for configured regions and search terms, plus Jobicy and Remote OK for remote listings.
-2. Optional Jooble and configured employer career boards (Greenhouse, Lever, Ashby, and SmartRecruiters) add listings.
+2. Jooble, JSearch, and configured employer career boards (Greenhouse, Lever, Ashby, and SmartRecruiters) add regional listings when enabled.
 3. Jobs are normalized, deduplicated and fit-scored.
 4. The current snapshot is stored in Netlify Blobs.
 5. Frontend calls `/api/jobs` to display the current snapshot.
@@ -91,9 +92,35 @@ The dashboard aggregates job listings from:
 - Jobicy — remote job listings
 - Remote OK — remote job listings
 - Jooble — regional job search API (requires `JOOBLE_API_KEY`)
+- JSearch — country-specific job search API through RapidAPI (requires `JSEARCH_API_KEY`)
 - Greenhouse, Lever, Ashby, and SmartRecruiters — public company career boards configured through `ATS_COMPANIES_JSON`
 
-Each ATS company entry requires a company display name, an `ats` provider identifier, and its provider-specific `board` identifier. Confirm the board identifier with the employer's careers site before adding it. See `.env.example` for the supported environment variable names.
+### Activating Jooble and ATS providers
+
+These integrations cannot fetch data until their configuration is added to the
+Netlify site's environment variables:
+
+- **Jooble:** obtain an API key from Jooble's API program and set
+  `JOOBLE_API_KEY`. The function searches Java/Spring roles in the six GCC
+  countries, Malaysia and Singapore.
+- **ATS boards:** set `ATS_COMPANIES_JSON` to a JSON array. Each company needs
+  its real public board identifier, which is usually the slug in its official
+  Greenhouse, Lever, Ashby or SmartRecruiters careers URL. For example (replace
+  this example with actual employers and board IDs):
+  ```json
+  [{"name":"Example employer","ats":"greenhouse","board":"verified-board-slug"}]
+  ```
+  Up to eight boards are fetched per run. Only include publicly accessible
+  career boards; do not put credentials in this JSON.
+- **JSearch:** subscribe to the JSearch API on RapidAPI and set the resulting
+  `JSEARCH_API_KEY`. The provider searches every configured target country
+  with bounded concurrency. Review the API plan and quota before enabling it.
+
+After adding or changing these values, trigger a production deploy and run a
+refresh. The dashboard's provider notice and Netlify function logs report
+missing configuration and per-country API failures. API keys must only be
+stored in Netlify environment variables, never in the frontend or repository.
+See `.env.example` for supported variable names.
 
 Jobicy and Remote OK primarily provide remote opportunities. Listings may not
 be located in GCC countries. The application uses keyword-based matching to

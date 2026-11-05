@@ -32,7 +32,9 @@ const makeJob = (overrides = {}) => ({
 test("normalizes explicit locations and keeps remote and regional clusters separate", () => {
   assert.equal(normalizeRegion("Dubai, UAE"), "United Arab Emirates");
   assert.equal(normalizeRegion("Abu Dhabi, United Arab Emirates"), "United Arab Emirates");
+  assert.equal(normalizeRegion("Dubai, AE"), "United Arab Emirates");
   assert.equal(normalizeRegion("Riyadh, Saudi Arabia"), "Saudi Arabia");
+  assert.equal(normalizeRegion("SA"), "Saudi Arabia");
   assert.equal(normalizeRegion("Remote - EMEA"), "Remote");
   assert.equal(normalizeRegion("Remote - Worldwide"), "Remote");
   assert.equal(normalizeRegion("Gulf region"), "GCC / Middle East");

@@ -73,7 +73,10 @@ async function fetchSearch(apiKey, search) {
   }
 
   const data = await response.json();
-  const listings = Array.isArray(data?.jobs) ? data.jobs : [];
+  if (!Array.isArray(data?.jobs)) {
+    throw new Error("Jooble returned an invalid response");
+  }
+  const listings = data.jobs;
   const jobs = listings
     .filter((job) => job && typeof job === "object" && isSecureApplyUrl(job.link))
     .map((job) => {
@@ -108,7 +111,7 @@ export async function fetchJoobleJobs(scoreJob) {
   if (!apiKey) {
     return {
       jobs: [],
-      skipped: "Jooble API key not configured"
+      skipped: "Jooble API key not configured (JOOBLE_API_KEY)"
     };
   }
 
